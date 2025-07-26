@@ -1,212 +1,262 @@
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
-from django.utils.html import format_html
-from django.urls import reverse
-from django.utils.safestring import mark_safe
+# IMPORTANT : Adaptez ces imports selon votre installation django-unfold (underscore dans le nom)
+from unfold.admin import ModelAdmin, StackedInline, TabularInline
+# Si vous n'avez pas django-unfold, utilisez :
+# from django.contrib.admin import ModelAdmin, StackedInline, TabularInline
 
-from .models import User, ProfilClient, ProfilTechnicien
+from user.models import User, ProfilClient, ProfilTechnicien
+from installation.models import Installation, InstallationEquipement, SchemaInstallation, Devis, ComparaisonEconomique
+from product.models import Categorie, Marque, Equipement
+from maintenance.models import Incident, Maintenance, QuestionMaintenance, ReponseMaintenance
 
+# ======== USER + PROFILS ========
 
-# --- Inline Admin profils ---
-
-class ProfilClientInline(admin.StackedInline):
+class ProfilClientInline(StackedInline):
     model = ProfilClient
-    can_delete = False
-    verbose_name = "Profil Client"
-    verbose_name_plural = "Profil Client"
     fk_name = 'user'
     extra = 0
-    readonly_fields = []
-
     fieldsets = (
-        (None, {
+        (_('Profil Client'), {
             'fields': ('address', 'consommation_annuelle_moyenne_kwh'),
+            'classes': ('collapse',),
         }),
     )
+    unfolding_fields = ('address', 'consommation_annuelle_moyenne_kwh')
 
 
-class ProfilTechnicienInline(admin.StackedInline):
+class ProfilTechnicienInline(StackedInline):
     model = ProfilTechnicien
-    can_delete = False
-    verbose_name = "Profil Technicien"
-    verbose_name_plural = "Profil Technicien"
     fk_name = 'user'
     extra = 0
-    readonly_fields = ['preview_id_document', 'preview_formation_document',
-                       'preview_certification_docs', 'preview_autorisation_docs', 'preview_autres_docs']
-
     fieldsets = (
-        (None, {
+        (_('Profil Technicien'), {
             'fields': (
-                'certifications',
-                'zone_couverture',
-                'is_certified',
+                'certifications', 'zone_couverture', 'is_certified',
+                'id_document', 'formation_document', 'certification_docs',
+                'autorisation_docs', 'autres_docs',
             ),
-        }),
-        ('Documents', {
-            'fields': (
-                'id_document',
-                'preview_id_document',
-                'formation_document',
-                'preview_formation_document',
-                'certification_docs',
-                'preview_certification_docs',
-                'autorisation_docs',
-                'preview_autorisation_docs',
-                'autres_docs',
-                'preview_autres_docs',
-            ),
-            'description': 'Téléchargez les documents liés au technicien.',
+            'classes': ('collapse',),
         }),
     )
+    unfolding_fields = ('is_certified',)
 
-    # Méthodes pour afficher un lien ou aperçu des fichiers uploadés
-    def _link_to_file(self, file_field):
-        if file_field:
-            url = file_field.url
-            filename = file_field.name.split('/')[-1]
-            return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>', url, filename)
-        return "(Aucun fichier)"
-
-    def preview_id_document(self, obj):
-        return self._link_to_file(obj.id_document)
-    preview_id_document.short_description = "Document d'identité"
-
-    def preview_formation_document(self, obj):
-        return self._link_to_file(obj.formation_document)
-    preview_formation_document.short_description = "Document de formation"
-
-    def preview_certification_docs(self, obj):
-        return self._link_to_file(obj.certification_docs)
-    preview_certification_docs.short_description = "Documents de certification"
-
-    def preview_autorisation_docs(self, obj):
-        return self._link_to_file(obj.autorisation_docs)
-    preview_autorisation_docs.short_description = "Documents d'autorisation"
-
-    def preview_autres_docs(self, obj):
-        return self._link_to_file(obj.autres_docs)
-    preview_autres_docs.short_description = "Autres documents"
-
-
-# --- UserAdmin personnalisé ---
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
-    inlines = [ProfilClientInline, ProfilTechnicienInline]
-
-    ordering = ['email']
-    list_display = ('email', 'full_name', 'role', 'phone_number', 'is_active', 'is_staff', 'is_superuser', 'date_joined', 'last_login')
-    list_filter = ('role', 'is_active', 'is_staff', 'is_superuser')
+class UserAdmin(ModelAdmin):
+    list_display = ('email', 'first_name', 'last_name', 'role', 'phone_number', 'is_staff', 'is_active')
+    list_filter = ('role', 'is_staff', 'is_active')
     search_fields = ('email', 'first_name', 'last_name', 'phone_number')
-    readonly_fields = ('date_joined', 'last_login')
+    ordering = ('email',)
+    readonly_fields = ('last_login', 'date_joined')
 
-    # Champs à afficher dans le formulaire création utilisateur
-    add_fieldsets = (
-        (None, {
-            'classes': ('wide',),
-            'fields': ('email', 'first_name', 'last_name', 'role', 'phone_number', 'password1', 'password2'),
-        }),
-    )
-
-    # Champs à afficher dans le formulaire modification utilisateur
     fieldsets = (
-        (None, {'fields': ('email', 'password')}),
-
-        (_('Informations personnelles'), {'fields': ('first_name', 'last_name', 'phone_number', 'role')}),
-
+        (_('Informations utilisateur'), {
+            'fields': ('email', 'first_name', 'last_name', 'role', 'phone_number', 'password'),
+        }),
         (_('Permissions'), {
+            'classes': ('collapse',),
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
         }),
-
-        (_('Dates importantes'), {'fields': ('last_login', 'date_joined')}),
+        (_('Dates importantes'), {
+            'classes': ('collapse',),
+            'fields': ('last_login', 'date_joined'),
+        }),
     )
+    unfolding_fields = ('first_name', 'last_name', 'phone_number', 'role')
 
-    def full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}".strip()
+    inlines = [ProfilClientInline, ProfilTechnicienInline]
 
-    full_name.short_description = 'Nom complet'
-    full_name.admin_order_field = 'last_name'
+    actions = ['activate_users', 'deactivate_users']
 
-    # Permet d'afficher un lien rapide vers la page détail du profil client / technicien
-    def get_inline_instances(self, request, obj=None):
-        # Montrer l'inline adapté selon le rôle de l'utilisateur
-        inlines = []
-        if obj:
-            if obj.role == 'client':
-                inlines.append(ProfilClientInline(self.model, self.admin_site))
-            elif obj.role == 'technicien':
-                inlines.append(ProfilTechnicienInline(self.model, self.admin_site))
-        return inlines
+    def activate_users(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f"{updated} utilisateur(s) activé(s).")
+    activate_users.short_description = "Activer les utilisateurs sélectionnés"
+
+    def deactivate_users(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f"{updated} utilisateur(s) désactivé(s).")
+    deactivate_users.short_description = "Désactiver les utilisateurs sélectionnés"
 
 
-# --- Admin pour les profils pour pouvoir modifier séparément si besoin ---
+# ======== PRODUCT ========
 
-@admin.register(ProfilClient)
-class ProfilClientAdmin(admin.ModelAdmin):
-    list_display = ( 'address', 'consommation_annuelle_moyenne_kwh')
-    search_fields = ('user__email', 'address')
-    readonly_fields = ['user']
-
-    def user_email(self, obj):
-        return obj.user.email
-
-    user_email.short_description = 'Email utilisateur'
-    user_email.admin_order_field = 'user__email'
+class SousCategorieInline(TabularInline):
+    model = Categorie
+    fk_name = 'parent'
+    extra = 0
+    fields = ('nom', 'parent')
+    show_change_link = True
 
 
-@admin.register(ProfilTechnicien)
-class ProfilTechnicienAdmin(admin.ModelAdmin):
-    list_display = ( 'zone_couverture', 'is_certified')
-    search_fields = ( 'zone_couverture', 'certifications')
-    list_filter = ('is_certified',)
-    readonly_fields = ['user', 'preview_id_document', 'preview_formation_document',
-                      'preview_certification_docs', 'preview_autorisation_docs', 'preview_autres_docs']
-
+@admin.register(Categorie)
+class CategorieAdmin(ModelAdmin):
+    list_display = ('nom', 'parent')
+    search_fields = ('nom',)
+    list_filter = ('parent',)
+    ordering = ('nom',)
+    inlines = [SousCategorieInline]
     fieldsets = (
         (None, {
+            'fields': ('nom', 'parent'),
+        }),
+    )
+    unfolding_fields = ('parent',)
+
+@admin.register(Marque)
+class MarqueAdmin(admin.ModelAdmin):
+    list_display = ('nom',)
+    search_fields = ('nom',)
+    ordering = ('nom',)
+
+
+@admin.register(Equipement)
+class EquipementAdmin(ModelAdmin):
+    list_display = ('nom', 'categorie', 'marque', 'mode', 'puissance_W', 'tension_V')
+    list_filter = ('categorie', 'marque', 'mode')
+    search_fields = ('nom', 'categorie__nom', 'marque__nom')
+    ordering = ('categorie', 'nom')
+
+    fieldsets = (
+        (_('Informations générales'), {
+            'fields': ('nom', 'categorie', 'marque', 'description'),
+        }),
+        (_('Caractéristiques techniques'), {
+            'classes': ('collapse',),
             'fields': (
-                'user',
-                'certifications',
-                'zone_couverture',
-                'is_certified',
+                'puissance_W', 'tension_V', 'frequence_Hz',
+                'capacite_Ah', 'taille', 'type_equipement',
+                'mode',
             ),
         }),
-        ('Documents', {
-            'fields': (
-                'id_document', 'preview_id_document',
-                'formation_document', 'preview_formation_document',
-                'certification_docs', 'preview_certification_docs',
-                'autorisation_docs', 'preview_autorisation_docs',
-                'autres_docs', 'preview_autres_docs',
-            )
+    )
+    unfolding_fields = ('categorie', 'marque', 'mode')
+
+
+# ======== INSTALLATION ========
+
+class InstallationEquipementInline(TabularInline):
+    model = InstallationEquipement
+    extra = 0
+    autocomplete_fields = ['equipement']
+    fields = ('equipement', 'quantite')
+
+
+class SchemaInstallationInline(StackedInline):
+    model = SchemaInstallation
+    extra = 0
+    readonly_fields = ('date_creation',)
+    fieldsets = (
+        (None, {
+            'fields': ('fichier_schema', 'description', 'date_creation'),
+            'classes': ('collapse',),
         }),
     )
 
-    def _link_to_file(self, file_field):
-        if file_field:
-            url = file_field.url
-            filename = file_field.name.split('/')[-1]
-            return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>', url, filename)
-        return "(Aucun fichier)"
 
-    def preview_id_document(self, obj):
-        return self._link_to_file(obj.id_document)
-    preview_id_document.short_description = "Document d'identité"
+class DevisInline(StackedInline):
+    model = Devis
+    extra = 0
+    readonly_fields = ('date_creation',)
+    fieldsets = (
+        (None, {
+            'fields': ('cout_achat_equipements', 'cout_installation_main_oeuvre',
+                       'cout_maintenance_estime_an', 'montant_total', 'fichier_devis_pdf', 'date_creation'),
+            'classes': ('collapse',),
+        }),
+    )
 
-    def preview_formation_document(self, obj):
-        return self._link_to_file(obj.formation_document)
-    preview_formation_document.short_description = "Document de formation"
 
-    def preview_certification_docs(self, obj):
-        return self._link_to_file(obj.certification_docs)
-    preview_certification_docs.short_description = "Documents de certification"
+class ComparaisonEconomiqueInline(StackedInline):
+    model = ComparaisonEconomique
+    extra = 0
+    fieldsets = (
+        (None, {
+            'fields': ('cout_electricite_traditionnelle_estime_an', 'economies_potentielles_annuelles', 'duree_retour_investissement_annees'),
+            'classes': ('collapse',),
+        }),
+    )
 
-    def preview_autorisation_docs(self, obj):
-        return self._link_to_file(obj.autorisation_docs)
-    preview_autorisation_docs.short_description = "Documents d'autorisation"
 
-    def preview_autres_docs(self, obj):
-        return self._link_to_file(obj.autres_docs)
-    preview_autres_docs.short_description = "Autres documents"
+@admin.register(Installation)
+class InstallationAdmin(ModelAdmin):
+    list_display = ('id', 'client', 'technicien', 'status', 'date_creation', 'date_derniere_mise_a_jour')
+    list_filter = ('status', 'province')
+    search_fields = ('client__user__email', 'client__user__first_name', 'technicien__user__email', 'province')
+    ordering = ('-date_creation',)
+
+    fieldsets = (
+        (_('Infos générales'), {
+            'fields': ('client', 'technicien', 'consommation_energetique', 'province', 'budget_client',
+                       'surface_disponible_m2', 'contraintes_specifiques', 'status'),
+        }),
+    )
+    inlines = [InstallationEquipementInline, SchemaInstallationInline, DevisInline]
+
+
+# ======== INCIDENTS ET MAINTENANCE ========
+
+class MaintenanceInline(StackedInline):
+    model = Maintenance
+    extra = 0
+    fk_name = 'incident'
+    readonly_fields = ('date_intervention_reelle',)
+    fieldsets = (
+        (_('Détails Maintenance'), {
+            'fields': ('technicien', 'solution_proposee', 'cout_estime', 'temps_estime_heure',
+                       'date_intervention_prevue', 'date_intervention_reelle', 'rapport_intervention_pdf'),
+            'classes': ('collapse',),
+        }),
+    )
+
+
+class ReponseMaintenanceInline(TabularInline):
+    model = ReponseMaintenance
+    extra = 0
+    fields = ('question', 'reponse', 'date_reponse', 'repondu_par_client', 'repondu_par_technicien')
+    readonly_fields = ('date_reponse',)
+    show_change_link = True
+
+
+@admin.register(Incident)
+class IncidentAdmin(ModelAdmin):
+    list_display = ('id', 'installation', 'client', 'status', 'date_signalisation')
+    list_filter = ('status',)
+    search_fields = ('installation__id', 'client__user__email', 'description')
+    ordering = ('-date_signalisation',)
+
+    fieldsets = (
+        (_('Informations Incident'), {
+            'fields': ('installation', 'client', 'description', 'status'),
+        }),
+    )
+    inlines = [MaintenanceInline, ReponseMaintenanceInline]
+
+
+@admin.register(Maintenance)
+class MaintenanceAdmin(ModelAdmin):
+    list_display = ('id', 'incident', 'technicien', 'date_intervention_prevue', 'date_intervention_reelle')
+    list_filter = ('technicien',)
+    search_fields = ('incident__id', 'technicien__user__email')
+    ordering = ('-date_intervention_prevue',)
+
+
+@admin.register(QuestionMaintenance)
+class QuestionMaintenanceAdmin(admin.ModelAdmin):
+    list_display = ('texte_question', 'type_question')
+    list_filter = ('type_question',)
+    search_fields = ('texte_question',)
+
+
+@admin.register(ReponseMaintenance)
+class ReponseMaintenanceAdmin(admin.ModelAdmin):
+    list_display = ('incident', 'question', 'date_reponse', 'repondu_par_client', 'repondu_par_technicien')
+    readonly_fields = ('date_reponse',)
+    list_filter = ('repondu_par_client', 'repondu_par_technicien')
+    search_fields = ('incident__id', 'question__texte_question')
+
+
+# Si besoin, vous pouvez aussi créer des actions personnalisées pour vos modèles,
+# des filtres additionnels, des champs en readonly conditionnels, etc.
+
