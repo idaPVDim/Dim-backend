@@ -1,173 +1,130 @@
 import json
+import os
+import re
+from decimal import Decimal, InvalidOperation
 from django.core.management.base import BaseCommand
-from product.models import Categorie, Marque, Equipement
+from django.apps import apps
+from django.db import models
 
-# Données fournies (vous pouvez aussi charger depuis un fichier JSON)
-DATA = [
-    {
-      "id": 1,
-      "categorie": "Electroménager",
-      "sous_categorie": "Réfrigérateur",
-      "nom": "Réfrigérateur simple porte 180L",
-      "puissance_W": 120,
-      "tension_V": 220,
-      "frequence_Hz": 50,
-      "marque": "LG",
-      "taille": "180L",
-      "mode": "AC"
-    },
-    {
-      "id": 2,
-      "categorie": "Electroménager",
-      "sous_categorie": "Téléviseur",
-      "nom": "Téléviseur LED 32''",
-      "puissance_W": 60,
-      "tension_V": 220,
-      "frequence_Hz": 50,
-      "marque": "Nasco",
-      "taille": "32 pouces",
-      "mode": "AC"
-    },
-    {
-      "id": 3,
-      "categorie": "Electroménager",
-      "sous_categorie": "Ventilateur",
-      "nom": "Ventilateur sur pied",
-      "puissance_W": 70,
-      "tension_V": 220,
-      "marque": "Binatone",
-      "mode": "AC"
-    },
-    {
-      "id": 4,
-      "categorie": "Electroménager",
-      "sous_categorie": "Climatiseur",
-      "nom": "Climatiseur Split 1.5CV",
-      "puissance_W": 1200,
-      "tension_V": 220,
-      "marque": "Midea",
-      "taille": "1.5CV",
-      "mode": "AC"
-    },
-    {
-      "id": 5,
-      "categorie": "Solaire",
-      "sous_categorie": "Panneau Solaire",
-      "nom": "Panneau monocristallin 330W",
-      "puissance_W": 330,
-      "tension_V": 24,
-      "marque": "Jinko Solar",
-      "mode": "DC"
-    },
-    {
-      "id": 6,
-      "categorie": "Solaire",
-      "sous_categorie": "Batterie",
-      "nom": "Batterie Gel 12V 200Ah",
-      "capacite_Ah": 200,
-      "tension_V": 12,
-      "type_equipement": "Gel",
-      "marque": "Narada",
-      "mode": "DC"
-    },
-    {
-      "id": 7,
-      "categorie": "Solaire",
-      "sous_categorie": "Onduleur",
-      "nom": "Onduleur hybride 3kVA 24V",
-      "puissance_VA": 3000,
-      "tension_entree_V": 24,
-      "tension_sortie_V": 220,
-      "type_equipement": "Hybride",
-      "marque": "Must Solar",
-      "mode": "DC/AC"
-    },
-    {
-      "id": 8,
-      "categorie": "Solaire",
-      "sous_categorie": "Contrôleur de charge",
-      "nom": "Contrôleur MPPT 60A 12/24/48V",
-      "courant_A": 60,
-      "tension_max_V": 100,
-      "type_equipement": "MPPT",
-      "marque": "Epever",
-      "mode": "DC"
-    },
-    {
-      "id": 9,
-      "categorie": "Electroménager",
-      "sous_categorie": "Lumière",
-      "nom": "Ampoule LED 9W",
-      "puissance_W": 9,
-      "tension_V": 220,
-      "marque": "Philips",
-      "mode": "AC"
-    },
-    {
-      "id": 10,
-      "categorie": "Electroménager",
-      "sous_categorie": "Congélateur",
-      "nom": "Congélateur horizontal 250L",
-      "puissance_W": 150,
-      "tension_V": 220,
-      "marque": "Hisense",
-      "taille": "250L",
-      "mode": "AC"
-    }
-]
+
+def as_decimal(value):
+    """Convertit en Decimal si possible, sinon retourne None."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        try:
+            return Decimal(value)
+        except InvalidOperation:
+            return None
+    if isinstance(value, str):
+        match = re.search(r'[\d.]+', value)
+        if match:
+            try:
+                return Decimal(match.group())
+            except InvalidOperation:
+                return None
+        return None
+    return None
+
 
 class Command(BaseCommand):
-    help = 'Importe les équipements depuis une source JSON statique'
+    help = "Importe les équipements depuis fichiers JSON dans le répertoire de la commande"
 
     def handle(self, *args, **options):
-        self.stdout.write("Début de l'import des équipements...")
+        self.stdout.write("Début d'import des produits JSON...")
 
-        for item in DATA:
-            # Gestion des catégories (catégorie + sous_catégorie)
-            # On crée ou récupère la catégorie racine
-            root_cat, _ = Categorie.objects.get_or_create(nom=item['categorie'], parent=None)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
 
-            # Si une sous_categorie est présente, on la crée ou récupère en lien avec la racine
-            if 'sous_categorie' in item and item['sous_categorie']:
-                sub_cat, _ = Categorie.objects.get_or_create(nom=item['sous_categorie'], parent=root_cat)
-            else:
-                sub_cat = root_cat
+        fichiers = [
+            "produits_solaire.json",
+            "produits_appareils.json",
+        ]
 
-            # Gestion de la marque (on crée si nécessaire)
-            marque_name = item.get('marque')
-            marque_obj = None
-            if marque_name:
-                marque_obj, _ = Marque.objects.get_or_create(nom=marque_name)
+        Equipement = apps.get_model('product', 'Equipement')
+        Categorie = apps.get_model('product', 'Categorie')
+        Marque = apps.get_model('product', 'Marque')
 
-            # Préparation des champs Equipement
-            equip_data = {
-                'categorie': sub_cat,
-                'marque': marque_obj,
-                'nom': item.get('nom'),
-                'description': item.get('description', ''),
-                'puissance_W': item.get('puissance_W'),
-                'tension_V': item.get('tension_V'),
-                'frequence_Hz': item.get('frequence_Hz'),
-                'capacite_Ah': item.get('capacite_Ah'),
-                'taille': item.get('taille'),
-                'type_equipement': item.get('type_equipement') or item.get('type'),
-                'mode': item.get('mode'),
-            }
+        model_fields = [
+            f.name for f in Equipement._meta.get_fields()
+            if f.concrete and not f.auto_created and f.name != 'id'
+        ]
 
-            # Pour certains champs spécifiques non dans votre modèle, on ignore (ex: puissance_VA, tension_entree_V...)
-            # Vous pouvez étendre la logique si besoin
+        def importer_fichier(nom_fichier):
+            chemin = os.path.join(base_dir, nom_fichier)
+            self.stdout.write(f"Import depuis {nom_fichier}...")
 
-            # Création / mise à jour (unique par nom + catégorie + marque)
-            equip, created = Equipement.objects.update_or_create(
-                nom=equip_data['nom'],
-                categorie=equip_data['categorie'],
-                marque=equip_data['marque'],
-                defaults=equip_data
-            )
+            with open(chemin, encoding='utf-8') as f:
+                data = json.load(f)
 
-            if created:
-                self.stdout.write(self.style.SUCCESS(f"Créé équipement: {equip.nom}"))
-            else:
-                self.stdout.write(f"Mis à jour équipement: {equip.nom}")
+            count_created = 0
+            count_updated = 0
 
-        self.stdout.write(self.style.SUCCESS("Import terminé avec succès !"))
+            for item in data:
+                if 'titre' in item:
+                    continue
+
+                root_cat, _ = Categorie.objects.get_or_create(nom=item.get('categorie', 'Inconnue'), parent=None)
+                sub_cat_nom = item.get('sous_categorie') or item.get('type')
+                if sub_cat_nom:
+                    sub_cat, _ = Categorie.objects.get_or_create(nom=sub_cat_nom, parent=root_cat)
+                else:
+                    sub_cat = root_cat
+
+                marque_nom = item.get('marque') or item.get('modele_marque')
+                marque_obj = None
+                if marque_nom:
+                    marque_obj, _ = Marque.objects.get_or_create(nom=marque_nom)
+
+                equip_data = {
+                    'categorie': sub_cat,
+                    'marque': marque_obj,
+                }
+
+                for field in model_fields:
+                    if field in ['categorie', 'marque']:
+                        continue
+                    val = item.get(field)
+                    if val is not None:
+                        db_field = Equipement._meta.get_field(field)
+                        if isinstance(db_field, (models.DecimalField, models.FloatField)):
+                            val = as_decimal(val)
+                        equip_data[field] = val
+
+                json_fields = set(item.keys()) - {'titre'}
+                unmapped_fields = json_fields - set(equip_data.keys()) - {'categorie', 'marque', 'sous_categorie', 'type', 'modele_marque'}
+                if unmapped_fields:
+                    self.stdout.write(self.style.WARNING(
+                        f"Champs JSON non importés pour '{equip_data.get('nom', 'Sans nom')}': {', '.join(unmapped_fields)}"
+                    ))
+
+                if 'nom' not in equip_data or not equip_data['nom']:
+                    self.stdout.write(self.style.ERROR(f"Équipement sans 'nom' ignoré dans {nom_fichier}"))
+                    continue
+
+                equip, created = Equipement.objects.update_or_create(
+                    nom=equip_data['nom'],
+                    categorie=equip_data['categorie'],
+                    marque=equip_data.get('marque'),
+                    defaults=equip_data
+                )
+
+                if created:
+                    count_created += 1
+                    self.stdout.write(self.style.SUCCESS(f"Créé équipement: {equip.nom}"))
+                else:
+                    count_updated += 1
+                    self.stdout.write(f"Mis à jour équipement: {equip.nom}")
+
+            return count_created, count_updated
+
+        total_created = 0
+        total_updated = 0
+
+        for f in fichiers:
+            c, u = importer_fichier(f)
+            total_created += c
+            total_updated += u
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Import terminé. Équipements créés: {total_created}, mis à jour: {total_updated}."
+        ))

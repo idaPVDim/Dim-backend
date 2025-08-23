@@ -5,7 +5,7 @@ from rest_framework import viewsets, filters
 from .models import Categorie, Marque, Equipement
 from .serializers import CategorieSerializer, MarqueSerializer, EquipementSerializer
 
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser ,AllowAny
 class CategorieViewSet(viewsets.ModelViewSet):
     queryset = Categorie.objects.all()
     serializer_class = CategorieSerializer
@@ -26,7 +26,7 @@ class MarqueViewSet(viewsets.ModelViewSet):
 class EquipementViewSet(viewsets.ModelViewSet):
     queryset = Equipement.objects.select_related('categorie', 'marque').all()
     serializer_class = EquipementSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'description', 'type_equipement', 'categorie__nom', 'marque__nom']
     ordering_fields = ['nom', 'categorie__nom', 'marque__nom', 'puissance_W', 'tension_V']

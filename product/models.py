@@ -2,27 +2,17 @@ from django.db import models
 
 
 class Categorie(models.Model):
-    nom = models.CharField(max_length=100, unique=True)
+    nom = models.CharField(max_length=150, unique=True, db_index=True)
     parent = models.ForeignKey(
-        'self',
-        on_delete=models.CASCADE,
-        related_name='enfants',
-        null=True,
-        blank=True,
-        help_text="Catégorie parente (vide si catégorie racine)"
+        'self', on_delete=models.CASCADE, null=True, blank=True, related_name='enfants'
     )
 
-    class Meta:
-        verbose_name_plural = 'Catégories'
-    
     def __str__(self):
-        if self.parent:
-            return f"{self.parent} > {self.nom}"
-        return self.nom
+        return f"{self.parent} > {self.nom}" if self.parent else self.nom
 
 
 class Marque(models.Model):
-    nom = models.CharField(max_length=100, unique=True)
+    nom = models.CharField(max_length=150, unique=True, db_index=True)
 
     def __str__(self):
         return self.nom
@@ -30,69 +20,69 @@ class Marque(models.Model):
 
 class Equipement(models.Model):
     MODE_CHOICES = (
-        ('AC', 'Alternatif (AC)'),
-        ('DC', 'Continu (DC)'),
-        ('DC/AC', 'Continu / Alternatif (Hybride)'),
+        ('AC', 'Alternatif'),
+        ('DC', 'Continu'),
+        ('DC/AC', 'Hybride'),
     )
 
     categorie = models.ForeignKey(Categorie, on_delete=models.PROTECT, related_name='equipements')
     marque = models.ForeignKey(Marque, on_delete=models.SET_NULL, null=True, blank=True, related_name='equipements')
     nom = models.CharField(max_length=255)
-    description = models.TextField(blank=True, null=True)
+    type_equipement = models.CharField(max_length=150, blank=True)  # ex: monocristallin, Gel, MPPT
+    description = models.TextField(blank=True)
 
-    # Champs standard (électroménagers et solaires)
-    puissance_W = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        blank=True,
-        null=True,
-        help_text="Puissance nominale en Watts"
-    )
-    tension_V = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        blank=True,
-        null=True,
-        help_text="Tension nominale en Volts"
-    )
-    frequence_Hz = models.PositiveIntegerField(
-        blank=True,
-        null=True,
-        help_text="Fréquence en Hz (pour AC uniquement)"
-    )
+    # Champs communs
+    puissance_W = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    puissance_VA = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    puissance_nominale_W = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # pour certaines données
+    tension_V = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # tension générale
+    tension_entree_DC_V = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    tension_sortie_AC_V = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    frequence_Hz = models.PositiveIntegerField(null=True, blank=True)
 
-    # Champs spécifiques à certains types (batteries, onduleurs...)
-    capacite_Ah = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        blank=True,
-        null=True,
-        help_text="Capacité en Ampère-heures (batteries)"
-    )
-    taille = models.CharField(
-        max_length=50,
-        blank=True,
-        null=True,
-        help_text="Taille, volume ou puissance (ex: 180L, 1.5CV, 32 pouces)"
-    )
-    type_equipement = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        help_text="Type précis (ex: Gel, MPPT, Hybride)"
-    )
+    capacite_Ah = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    energie_Wh = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
-    mode = models.CharField(
-        max_length=10,
-        choices=MODE_CHOICES,
-        help_text="Mode d'alimentation"
-    )
+    taille = models.CharField(max_length=100, blank=True)  # ex: taille_mm, volume, dimensions
+    taille_mm = models.CharField(max_length=100, blank=True)
 
-    class Meta:
-        verbose_name = "Équipement"
-        verbose_name_plural = "Équipements"
-        ordering = ['categorie', 'nom']
+    efficacite_module_pourcent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    courant_puissance_max_Imp = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    courant_court_circuit_ISC = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    tension_puissance_max_VMP = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    tension_circuit_ouvert_VOC = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    tension_maximale_systeme_V = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    tolerance_puissance_W = models.CharField(max_length=50, blank=True)
+    temperature_module_fonctionnement_C = models.CharField(max_length=50, blank=True)
+    calibre_max_fusibles_serie_A = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    cycle_vie_cycles = models.CharField(max_length=100, blank=True)  # ex: 500-800 cycles
+    ir_initiale_mOhm = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)  # résistance interne
+    poids_kg = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+
+    forme_onde = models.CharField(max_length=50, blank=True)  # ex: Pur Sinus
+    rendement_pourcent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    courant_charge_A = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    tension_systeme_V = models.CharField(max_length=50, blank=True)  # ex: "12/24 (Auto-détection)"
+    tension_max_PV_V = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+
+    puissance_PV_max_12V = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    puissance_PV_max_24V = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    puissance_PV_max_48V = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    caracteristiques_additionnelles = models.JSONField(blank=True, null=True)  # liste de caractéristiques
+
+    conditions_test = models.CharField(max_length=255, blank=True)
+    type_stockage = models.CharField(max_length=255, blank=True)
+
+    description_technique = models.TextField(blank=True)  # Description technique longue
+
+
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, blank=True)
 
     def __str__(self):
-        marque = f" ({self.marque})" if self.marque else ""
-        return f"{self.nom}{marque}"
+        return f"{self.nom} ({self.marque.nom if self.marque else 'Sans marque'})"
