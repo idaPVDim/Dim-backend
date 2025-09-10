@@ -1,68 +1,106 @@
 from rest_framework import serializers
-from .models import Installation, InstallationEquipement, Devis, ComparaisonEconomique, SchemaInstallation
-from product.serializers import EquipementSerializer
-from user.serializers import ProfilClientSerializer, ProfilTechnicienSerializer
+from .models import (
+    Province,
+    Installation,
+    InstallationEquipement,
+    SchemaInstallation,
+    Devis,
+    ComparaisonEconomique,
+)
+from maintenance.models import Incident, Maintenance, QuestionMaintenance, ReponseMaintenance
+from product.serializers import EquipementSerializer  # Assurez-vous de l'avoir
+from user.serializers import ProfilClientSerializer, ProfilTechnicienSerializer  # Idem
+
+
+class ProvinceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Province
+        fields = ['id', 'nom', 'irradiation']
+
 
 class InstallationEquipementSerializer(serializers.ModelSerializer):
     equipement = EquipementSerializer(read_only=True)
-    equipement_id = serializers.PrimaryKeyRelatedField(queryset=EquipementSerializer.Meta.model.objects.all(), source='equipement', write_only=True)
+    equipement_id = serializers.PrimaryKeyRelatedField(
+        queryset=EquipementSerializer.Meta.model.objects.all(),
+        write_only=True,
+        source='equipement'
+    )
+    source = serializers.ChoiceField(choices=InstallationEquipement._meta.get_field('source').choices)
 
     class Meta:
         model = InstallationEquipement
-        fields = ['id', 'equipement', 'equipement_id', 'quantite']
+        fields = ['id', 'equipement', 'equipement_id', 'quantite', 'source']
+
 
 class InstallationSerializer(serializers.ModelSerializer):
     client = ProfilClientSerializer(read_only=True)
-    technicien = ProfilTechnicienSerializer(read_only=True)
-    equipements_proposes = InstallationEquipementSerializer(many=True, source='installationequipement_set', read_only=True)
+    technicien = ProfilTechnicienSerializer(read_only=True, allow_null=True)
+    province = ProvinceSerializer(read_only=True)
+    province_id = serializers.PrimaryKeyRelatedField(
+        queryset=Province.objects.all(),
+        source='province',
+        write_only=True
+    )
 
-    # Pour créer/modifier équipements proposés via l’installation
-    new_equipements = InstallationEquipementSerializer(many=True, write_only=True, required=False)
+    equipements_proposes = InstallationEquipementSerializer(
+        source='installationequipement_set',
+        many=True,
+        required=False
+    )
+
+    source_donnees = serializers.ChoiceField(choices=Installation._meta.get_field('source_donnees').choices)
 
     class Meta:
         model = Installation
         fields = [
-            'id', 'client', 'technicien', 'consommation_energetique',
-            'province', 'budget_client', 'surface_disponible_m2', 'contraintes_specifiques',
-            'status', 'date_creation', 'date_derniere_mise_a_jour', 'equipements_proposes', 'new_equipements',
+            'id', 'client', 'technicien', 'source_donnees',
+            'province', 'province_id',
+            'budget_client', 'surface_disponible_m2', 'contraintes_specifiques',
+            'status', 'date_creation', 'date_derniere_mise_a_jour',
+            'equipements_proposes'
         ]
-        read_only_fields = ['date_creation', 'date_derniere_mise_a_jour', 'equipements_proposes']
 
     def create(self, validated_data):
-        new_equipements_data = validated_data.pop('new_equipements', [])
+        equipements_data = validated_data.pop('installationequipement_set', [])
         installation = Installation.objects.create(**validated_data)
-
-        for equip_data in new_equipements_data:
-            InstallationEquipement.objects.create(installation=installation, **equip_data)
-
+        for eq_data in equipements_data:
+            InstallationEquipement.objects.create(installation=installation, **eq_data)
         return installation
 
     def update(self, instance, validated_data):
-        new_equipements_data = validated_data.pop('new_equipements', None)
-
+        equipements_data = validated_data.pop('installationequipement_set', [])
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-
-        if new_equipements_data is not None:
-            # Supprimez les anciens équipements liés si besoin ou adaptez la logique
-            instance.installationequipement_set.all().delete()
-            for equip_data in new_equipements_data:
-                InstallationEquipement.objects.create(installation=instance, **equip_data)
-
+        # Mise à jour simplifiée des équipements : suppression + recréation
+        instance.installationequipement_set.all().delete()
+        for eq_data in equipements_data:
+            InstallationEquipement.objects.create(installation=instance, **eq_data)
         return instance
+
 
 class SchemaInstallationSerializer(serializers.ModelSerializer):
     class Meta:
         model = SchemaInstallation
-        fields = '__all__'
+        fields = ['id', 'installation', 'fichier_schema', 'description', 'date_creation']
+
 
 class DevisSerializer(serializers.ModelSerializer):
     class Meta:
         model = Devis
-        fields = '__all__'
+        fields = [
+            'id', 'installation', 'cout_achat_equipements',
+            'cout_installation_main_oeuvre', 'cout_maintenance_estime_an',
+            'montant_total', 'date_creation', 'fichier_devis_pdf'
+        ]
+
 
 class ComparaisonEconomiqueSerializer(serializers.ModelSerializer):
     class Meta:
         model = ComparaisonEconomique
-        fields = '__all__'
+        fields = [
+            'id', 'devis', 'cout_electricite_traditionnelle_estime_an',
+            'economies_potentielles_annuelles', 'duree_retour_investissement_annees'
+        ]
+
+
