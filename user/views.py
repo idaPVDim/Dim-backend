@@ -56,17 +56,17 @@ class LoginView(APIView):
         try:
             serializer.is_valid(raise_exception=True)
         except serializers.ValidationError as e:
-            print("Login validation error:", e.detail)
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
         user = serializer.validated_data['user']
         token, created = Token.objects.get_or_create(user=user)
+        
         return Response({
             'token': token.key,
             'user_id': user.id,
             'email': user.email,
+            'role': user.role,
         }, status=status.HTTP_200_OK)
-
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
