@@ -10,7 +10,32 @@ from .models import (
 from maintenance.models import Incident, Maintenance, QuestionMaintenance, ReponseMaintenance
 from product.serializers import EquipementSerializer  # Assurez-vous de l'avoir
 from user.serializers import ProfilClientSerializer, ProfilTechnicienSerializer  # Idem
+from user.models import ProfilClient, ProfilTechnicien
+from rest_framework import serializers
 
+class ClientInfoSerializer(serializers.ModelSerializer):
+    first_name = serializers.CharField(source='user.first_name')
+    last_name = serializers.CharField(source='user.last_name')
+    email = serializers.EmailField(source='user.email')
+
+    class Meta:
+        model = ProfilClient
+        fields = ['first_name', 'last_name', 'email', 'address', 'consommation_annuelle_moyenne_kwh']
+
+from rest_framework import serializers
+
+class TechnicienInfoSerializer(serializers.ModelSerializer):
+    first_name = serializers.CharField(source='user.first_name')
+    last_name = serializers.CharField(source='user.last_name')
+    email = serializers.EmailField(source='user.email')
+
+    class Meta:
+        model = ProfilTechnicien
+        fields = [
+            'first_name', 'last_name', 'email', 'is_certified', 'zone_couverture',
+            'id_document', 'formation_document', 'certification_docs',
+            'autorisation_docs', 'autres_docs'
+        ]
 
 class ProvinceSerializer(serializers.ModelSerializer):
     class Meta:
@@ -33,8 +58,8 @@ class InstallationEquipementSerializer(serializers.ModelSerializer):
 
 
 class InstallationSerializer(serializers.ModelSerializer):
-    client = ProfilClientSerializer(read_only=True)
-    technicien = ProfilTechnicienSerializer(read_only=True, allow_null=True)
+    client = ClientInfoSerializer(read_only=True)
+    technicien = TechnicienInfoSerializer(read_only=True, allow_null=True)
     province = ProvinceSerializer(read_only=True)
     province_id = serializers.PrimaryKeyRelatedField(
         queryset=Province.objects.all(),
