@@ -48,6 +48,7 @@ urlpatterns = [
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
         path('installation/', include('installation.urls')),
     path('maintenance/', include('maintenance.urls')),
+    path('pv/', include('installation_pv.urls')),
     
 ]
 if settings.DEBUG:
