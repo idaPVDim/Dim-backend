@@ -6,7 +6,6 @@
 
 #Les deux options doivent être stockées séparément, mais liées à la même installation.
 
-
 from django.db import models
 from user.models import ProfilClient, ProfilTechnicien
 from product.models import Equipement
@@ -19,13 +18,14 @@ class Province(models.Model):
     def __str__(self):
         return self.nom
 
+
 class Installation(models.Model):
     STATUS_CHOICES = (
         ('pending', 'En attente'),
         ('in_progress', 'En cours'),
         ('proposed', 'Proposition envoyée'),
         ('accepted', 'Acceptée'),
-        ('rejected', 'Rejetée'),
+        ('rejected', 'Rejetée'), 
         ('installed', 'Installée'),
         ('canceled', 'Annulée'),
     )

@@ -1,86 +1,126 @@
 from rest_framework import serializers
+from .models import EquipementDimensionnement, DimensionnementPV, DevisProduit
+from product.models import Equipement
 
-class AppareilSerializer(serializers.Serializer):
-    puissance_nominale_W = serializers.FloatField()
-    nombre = serializers.IntegerField()
-    temps_utilisation_h = serializers.FloatField()
+class EquipementDimensionnementSerializer(serializers.ModelSerializer):
+    equipement_nom = serializers.ReadOnlyField(source='equipement.nom')
+    puissance_nominale_w = serializers.ReadOnlyField(source='equipement.puissance_nominale_W')
 
-class DimensionnementPvSerializer(serializers.Serializer):
-    appareils = AppareilSerializer(many=True)
-    irradiation = serializers.FloatField(default=5.5)
-    facteur_rendement = serializers.FloatField(default=0.6)
-    tension_batterie = serializers.FloatField(default=24)
-    capacite_batterie = serializers.FloatField(default=100)
-    jours_autonomie = serializers.IntegerField(default=2)
-    profondeur_decharge = serializers.FloatField(default=0.8)
+    class Meta:
+        model = EquipementDimensionnement
+        fields = ['id', 'equipement', 'equipement_nom', 'quantite', 'temps_utilisation_h', 'puissance_nominale_w', 'source']
 
-    consommation_energie = serializers.FloatField(read_only=True)
-    consommation_securisee = serializers.FloatField(read_only=True)
-    puissance_crete = serializers.FloatField(read_only=True)
-    tension_systeme = serializers.FloatField(read_only=True)
-    nombre_panneaux = serializers.IntegerField(read_only=True)
-    panneaux_serie = serializers.IntegerField(read_only=True)
-    panneaux_parallele = serializers.IntegerField(read_only=True)
-    capacite_stockage = serializers.FloatField(read_only=True)
-    nombre_batteries = serializers.IntegerField(read_only=True)
-    batteries_serie = serializers.IntegerField(read_only=True)
-    batteries_parallele = serializers.IntegerField(read_only=True)
+    def validate_equipement(self, value):
+        if not Equipement.objects.filter(id=value.id).exists():
+            raise serializers.ValidationError("Équipement inconnu.")
+        return value
+
+class DimensionnementPVSerializer(serializers.ModelSerializer):
+    equipements = EquipementDimensionnementSerializer(many=True)
+    consommation_totale = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = DimensionnementPV
+        fields = '__all__'
+
+    def get_consommation_totale(self, obj):
+        return obj.consommation_totale_journaliere()
+
+    def validate(self, data):
+        avec_stockage = data.get('avec_stockage', getattr(self.instance, 'avec_stockage', True))
+        if avec_stockage:
+            champs_requis = ['capacite_unitaire_batterie_ah', 'tension_unitaire_batterie_v', 'autonomie_jours', 'profondeur_decharge']
+            for champ in champs_requis:
+                if not data.get(champ) and not (self.instance and getattr(self.instance, champ, None)):
+                    raise serializers.ValidationError({champ: "Champ requis lorsque stockage activé."})
+        return data
 
     def create(self, validated_data):
-        appareils = validated_data.pop('appareils')
-        Ir = validated_data.get('irradiation', 5.5)
-        K = validated_data.get('facteur_rendement', 0.6)
-        U_bat = validated_data.get('tension_batterie', 24)
-        C_bat = validated_data.get('capacite_batterie', 100)
-        n_j = validated_data.get('jours_autonomie', 2)
-        d = validated_data.get('profondeur_decharge', 0.8)
+        equipements_data = validated_data.pop('equipements')
+        dimensionnement = DimensionnementPV.objects.create(**validated_data)
+        # Créer les équipements
+        for equip_data in equipements_data:
+            EquipementDimensionnement.objects.create(dimensionnement=dimensionnement, **equip_data)
+        # Faire calcul automatique
+        dimensionnement = self.calculer_dimensionnement(dimensionnement)
+        dimensionnement.save()
+        return dimensionnement
 
-        # 1. Calcul Ec
-        Ec = sum(app['puissance_nominale_W'] * app['nombre'] * app['temps_utilisation_h'] for app in appareils)
-        Ec_sec = Ec * 1.25
+    def update(self, instance, validated_data):
+        equipements_data = validated_data.pop('equipements', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if equipements_data is not None:
+            instance.equipements.all().delete()
+            for equip_data in equipements_data:
+                EquipementDimensionnement.objects.create(dimensionnement=instance, **equip_data)
+        instance = self.calculer_dimensionnement(instance)
+        instance.save()
+        return instance
 
-        # 2. Puissance crête Pc
-        Pc = Ec_sec / (Ir * 1000 * K)
+    def calculer_dimensionnement(self, dimensionnement):
+        # Calcul consommation sécurisée
+        consommation = dimensionnement.consommation_totale_journaliere()
+        consommation_securisee = consommation * 1.25
 
-        # 3. Tension système
-        if Pc <= 500:
-            Us = 12
-        elif Pc <= 2000:
-            Us = 24
-        elif Pc <= 10000:
-            Us = 48
+        # Données environnementales
+        installation = dimensionnement.installation
+        irradiation = float(installation.province.irradiation)
+        facteur_rendement = float(dimensionnement.facteur_rendement)
+
+        # Puissance crête en Wc
+        puissance_crete = consommation_securisee / (irradiation * 1000 * facteur_rendement)
+        dimensionnement.puissance_crete_wc = puissance_crete
+
+        # Tension champ
+        if puissance_crete < 500:
+            tension_champ = 12
+        elif puissance_crete < 2000:
+            tension_champ = 24
+        elif puissance_crete < 10000:
+            tension_champ = 48
         else:
-            Us = 96
+            tension_champ = 96
+        dimensionnement.tension_champ_v = tension_champ
 
-        # 4. Nombre panneaux
-        Pu = 150
-        Np = int(-(-Pc // Pu))
+        # Nombre panneaux
+        Pu = dimensionnement.puissance_unitaire_panneau_w
+        Up = dimensionnement.tension_unitaire_panneau_volt
+        nombre_total_panneaux = round(puissance_crete / Pu)
+        ns = int(tension_champ / Up)
+        np = round(nombre_total_panneaux / ns) if ns > 0 else 1
 
-        # 5. Série / parallèle panneaux
-        Up = 12
-        ns = round(Us / Up)
-        np = int(-(-Np // ns))
+        dimensionnement.nombre_total_panneaux = nombre_total_panneaux
+        dimensionnement.nombre_panneaux_serie = ns
+        dimensionnement.nombre_panneaux_parallele = np
 
-        # 6. Capacité stockage
-        Ct = (n_j * Ec_sec) / (Us * d)
+        # Dimensionnement batterie si besoin
+        if dimensionnement.avec_stockage:
+            U_bat = dimensionnement.tension_unitaire_batterie_v
+            C_bat = dimensionnement.capacite_unitaire_batterie_ah
+            nj = dimensionnement.autonomie_jours
+            d = float(dimensionnement.profondeur_decharge)
 
-        # 7. Batteries nombre total
-        Nb = int(-(-Ct // C_bat))
+            Ct = (nj * consommation_securisee) / (tension_champ * d)
+            Nbat = int(round(Ct / C_bat) * (tension_champ / U_bat))
+            nbs = int(tension_champ / U_bat)
+            nbp = int(round(Nbat / nbs)) if nbs > 0 else 1
 
-        # 8. Batteries série/parallèle
-        nbs = round(Us / U_bat)
-        nbp = int(-(-Nb // nbs))
+            dimensionnement.capacite_batterie_ah = Ct
+            dimensionnement.nombre_total_batteries = Nbat
+            dimensionnement.nombre_batteries_serie = nbs
+            dimensionnement.nombre_batteries_parallele = nbp
+        else:
+            dimensionnement.capacite_batterie_ah = None
+            dimensionnement.nombre_total_batteries = None
+            dimensionnement.nombre_batteries_serie = None
+            dimensionnement.nombre_batteries_parallele = None
 
-        return {
-            'consommation_energie': Ec,
-            'consommation_securisee': Ec_sec,
-            'puissance_crete': Pc,
-            'tension_systeme': Us,
-            'nombre_panneaux': Np,
-            'panneaux_serie': ns,
-            'panneaux_parallele': np,
-            'capacite_stockage': Ct,
-            'nombre_batteries': Nb,
-            'batteries_serie': nbs,
-            'batteries_parallele': nbp,
-        }
+        return dimensionnement
+
+class DevisProduitSerializer(serializers.ModelSerializer):
+    equipement_nom = serializers.ReadOnlyField(source='equipement.nom')
+
+    class Meta:
+        model = DevisProduit
+        fields = ['id', 'equipement', 'equipement_nom', 'quantite', 'prix_unitaire_fcfa', 'prix_total_fcfa']

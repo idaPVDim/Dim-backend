@@ -1,14 +1,30 @@
-from django.shortcuts import render
+from rest_framework import generics, permissions
+from .models import DimensionnementPV
+from .serializers import DimensionnementPVSerializer
 
-# Create your views here.
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+class DimensionnementPVListCreateView(generics.ListCreateAPIView):
+    queryset = DimensionnementPV.objects.all()
+    serializer_class = DimensionnementPVSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-class DimensionnementPvAPIView(APIView):
-    def post(self, request):
-        serializer = DimensionnementPvSerializer(data=request.data)
-        if serializer.is_valid():
-            resultat = serializer.save()
-            return Response(resultat, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'profilclient'):
+            return self.queryset.filter(installation__client__user=user)
+        elif hasattr(user, 'profiltechnicien'):
+            return self.queryset.filter(installation__technicien__user=user)
+        return self.queryset.none()
+
+
+class DimensionnementPVDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = DimensionnementPV.objects.all()
+    serializer_class = DimensionnementPVSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'profilclient'):
+            return self.queryset.filter(installation__client__user=user)
+        elif hasattr(user, 'profiltechnicien'):
+            return self.queryset.filter(installation__technicien__user=user)
+        return self.queryset.none()
