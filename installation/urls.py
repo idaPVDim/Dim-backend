@@ -5,9 +5,11 @@ from .views import (
     SchemaInstallationViewSet,
     DevisViewSet,
     ComparaisonEconomiqueViewSet,
+    ProvinceViewSet
 )
 
 router = DefaultRouter()
+router.register(r'provinces', ProvinceViewSet, basename='province')
 router.register(r'installations', InstallationViewSet, basename='installation')
 router.register(r'installation-equipements', InstallationEquipementViewSet, basename='installationequipement')
 router.register(r'schemas', SchemaInstallationViewSet, basename='schemainstallation')
