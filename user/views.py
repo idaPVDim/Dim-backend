@@ -1,176 +1,232 @@
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, viewsets, filters, status, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from django.contrib.auth import get_user_model, logout
+from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
+from django.contrib.auth import get_user_model, logout, password_validation
+from django.shortcuts import get_object_or_404
+
+from .models import (
+    ProfilClient,
+    ProfilTechnicien,
+    ProfilMarchand,
+    Entreprise
+)
+
 from .serializers import (
     RegisterSerializer,
     UserProfileSerializer,
     UserSerializer,
     TokenLoginSerializer,
-)
-from rest_framework import serializers
-from django.contrib.auth import get_user_model, password_validation
-from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
-from rest_framework import viewsets, permissions, filters, status
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from django.contrib.auth import get_user_model
-from .serializers import (
-    UserSerializer,
-    UserProfileSerializer,
     ProfilClientSerializer,
     ProfilTechnicienSerializer,
-    RegisterSerializer,
+    ProfilMarchandSerializer,
+    EntrepriseSerializer,
 )
-from .models import ProfilClient, ProfilTechnicien
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from django.shortcuts import get_object_or_404
 
 User = get_user_model()
 
 
+# -------------------------------------------------------
+# AUTH : REGISTER, LOGIN, LOGOUT
+# -------------------------------------------------------
 
 class RegisterView(generics.CreateAPIView):
-    permission_classes = [AllowAny]
+    permission_classes = [permissions.AllowAny]
     serializer_class = RegisterSerializer
 
+
+class LoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = TokenLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.validated_data['user']
+        token, _ = Token.objects.get_or_create(user=user)
+
+        return Response({
+            "token": token.key,
+            "user": UserSerializer(user).data
+        })
+
+
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        request.user.auth_token.delete()
+        logout(request)
+        return Response({"detail": "Déconnexion réussie."})
+
+
+# -------------------------------------------------------
+# PROFIL DU USER CONNECTÉ /users/me/
+# -------------------------------------------------------
+
 class ProfileView(generics.RetrieveUpdateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserProfileSerializer
 
     def get_object(self):
         return self.request.user
 
-class UserListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = UserSerializer
-    queryset = User.objects.all()
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .permissions import IsAdminOrSelf
+from .serializers import UserProfileSerializer
 
-class LoginView(APIView):
-    permission_classes = [AllowAny]
+class MeAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrSelf]
 
-    def post(self, request, *args, **kwargs):
-        serializer = TokenLoginSerializer(data=request.data, context={'request': request})
-        try:
-            serializer.is_valid(raise_exception=True)
-        except serializers.ValidationError as e:
-            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+    def get(self, request):
+        """Get the current user's profile"""
+        serializer = UserProfileSerializer(request.user)
+        return Response(serializer.data)
 
-        user = serializer.validated_data['user']
-        token, created = Token.objects.get_or_create(user=user)
-        
-        return Response({
-            'token': token.key,
-            'user_id': user.id,
-            'email': user.email,
-            'role': user.role,
-        }, status=status.HTTP_200_OK)
-
-class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, *args, **kwargs):
-        request.user.auth_token.delete()  # supprime le token d’authentification
-        logout(request)  # optionnel, si session aussi utilisée
-        return Response({"detail": "Déconnexion réussie."}, status=status.HTTP_200_OK)
-
-
-
-
-class IsAdminOrSelf(permissions.BasePermission):
-    """
-    Autorise uniquement l'admin ou l'utilisateur lui même.
-    """
-
-    def has_object_permission(self, request, view, obj):
-        return request.user.is_staff or obj == request.user
-
-
-class UserViewSet(viewsets.ModelViewSet):
-    """
-    CRUD complet avec permissions :
-    - List & Create = admin uniquement
-    - Retrieve, Update, Partial_update = admin ou propriétaire
-    - Delete = admin uniquement
-    """
-    queryset = User.objects.all().order_by('email')
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['email']
-    ordering_fields = ['email', 'role']
-
-    def get_serializer_class(self):
-        if self.action in ['retrieve', 'update', 'partial_update']:
-            return UserProfileSerializer
-        elif self.action == 'create':
-            return RegisterSerializer
-        return UserSerializer
-
-    def get_permissions(self):
-        if self.action in ['list', 'create', 'destroy']:
-            permission_classes = [IsAdminUser]
-        elif self.action in ['update', 'partial_update', 'retrieve']:
-            permission_classes = [IsAuthenticated, IsAdminOrSelf]
-        else:
-            permission_classes = [IsAuthenticated]
-        return [permission() for permission in permission_classes]
-
-    def perform_create(self, serializer):
-        serializer.save()
-
-    @action(detail=False, methods=['get', 'put', 'patch'], permission_classes=[IsAuthenticated])
-    def me(self, request):
-        """
-        GET /users/me/ : récupérer son profil
-        PUT/PATCH /users/me/ : modifier son profil
-        """
-        if request.method == 'GET':
-            serializer = UserProfileSerializer(request.user)
-            return Response(serializer.data)
-        serializer = UserProfileSerializer(request.user, data=request.data, partial=(request.method == 'PATCH'))
+    def patch(self, request):
+        """Update the current user's profile"""
+        serializer = UserProfileSerializer(
+            request.user,
+            data=request.data,
+            partial=True
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
 
-    @action(detail=True, methods=['put'], permission_classes=[IsAdminUser])
+from .serializers import EntrepriseSerializer
+
+class MyEntrepriseAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrSelf]
+
+    def get(self, request):
+        if request.user.role not in ["technicien", "marchand"]:
+            return Response({"detail": "This role has no company"}, status=403)
+        serializer = EntrepriseSerializer(request.user.entreprise)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        if request.user.role not in ["technicien", "marchand"]:
+            return Response({"detail": "This role has no company"}, status=403)
+        serializer = EntrepriseSerializer(request.user.entreprise, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+# -------------------------------------------------------
+# LISTE DES USERS (ADMIN)
+# -------------------------------------------------------
+
+class UserListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserSerializer
+    queryset = User.objects.all()
+
+
+# -------------------------------------------------------
+# PERMISSION : ADMIN ou SOI-MÊME
+# -------------------------------------------------------
+
+class IsAdminOrSelf(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        return request.user.is_staff or obj == request.user
+
+
+# -------------------------------------------------------
+# USER VIEWSET (CRUD admin + /users/me/)
+# -------------------------------------------------------
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all().order_by("email")
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["email"]
+    ordering_fields = ["email", "role"]
+
+    def get_serializer_class(self):
+        if self.action in ["retrieve", "update", "partial_update"]:
+            return UserProfileSerializer
+        if self.action == "create":
+            return RegisterSerializer
+        return UserSerializer
+
+    def get_permissions(self):
+        if self.action in ["list", "create", "destroy"]:
+            return [permissions.IsAdminUser()]
+        if self.action in ["retrieve", "update", "partial_update"]:
+            return [permissions.IsAuthenticated(), IsAdminOrSelf()]
+        return [permissions.IsAuthenticated()]
+
+    @action(detail=False, methods=["get", "patch"], permission_classes=[permissions.IsAuthenticated])
+    def me(self, request):
+        if request.method == "GET":
+            return Response(UserProfileSerializer(request.user).data)
+
+        serializer = UserProfileSerializer(
+            request.user,
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["put"], permission_classes=[permissions.IsAdminUser])
     def change_password(self, request, pk=None):
-        """
-        PUT /users/{id}/change_password/
-        Permet à un admin de changer le mot de passe d'un utilisateur.
-        """
         user = get_object_or_404(User, pk=pk)
         serializer = ChangePasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user.set_password(serializer.validated_data['password'])
-        user.save()
-        return Response({'detail': 'Mot de passe mis à jour.'}, status=status.HTTP_200_OK)
 
+        user.set_password(serializer.validated_data["password"])
+        user.save()
+
+        return Response({"detail": "Mot de passe mis à jour."})
+
+
+# -------------------------------------------------------
+# PROFILS CLIENT / TECHNICIEN / MARCHAND (ADMIN)
+# -------------------------------------------------------
 
 class ProfilClientViewSet(viewsets.ModelViewSet):
-    """
-    API pour gérer les profils clients.
-    Accessible uniquement aux admins.
-    """
     queryset = ProfilClient.objects.all()
     serializer_class = ProfilClientSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [permissions.IsAdminUser]
 
 
 class ProfilTechnicienViewSet(viewsets.ModelViewSet):
-    """
-    API pour gérer les profils techniciens.
-    Accessible uniquement aux admins.
-    """
     queryset = ProfilTechnicien.objects.all()
     serializer_class = ProfilTechnicienSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [permissions.IsAdminUser]
+
+
+class ProfilMarchandViewSet(viewsets.ModelViewSet):
+    queryset = ProfilMarchand.objects.all()
+    serializer_class = ProfilMarchandSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+
+# -------------------------------------------------------
+# ENTREPRISE CRUD (ADMIN)
+# -------------------------------------------------------
+
+class EntrepriseViewSet(viewsets.ModelViewSet):
+    queryset = Entreprise.objects.all()
+    serializer_class = EntrepriseSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+
+# -------------------------------------------------------
+# CHANGEMENT DE MOT DE PASSE
+# -------------------------------------------------------
 
 class ChangePasswordSerializer(serializers.Serializer):
-    password = serializers.CharField(write_only=True, required=True, validators=[password_validation.validate_password])
-    password2 = serializers.CharField(write_only=True, required=True)
+    password = serializers.CharField(write_only=True, validators=[password_validation.validate_password])
+    password2 = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        if attrs['password'] != attrs['password2']:
+        if attrs["password"] != attrs["password2"]:
             raise serializers.ValidationError("Les mots de passe ne correspondent pas.")
         return attrs

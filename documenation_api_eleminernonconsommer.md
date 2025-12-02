@@ -79,9 +79,9 @@ class EquipementSerializer(serializers.ModelSerializer):
             'forme_onde', 'rendement_pourcent', 'courant_charge_A', 'cycle_vie_cycles', 'ir_initiale_mOhm',
             'type_stockage', 'puissance_PV_max_12V', 'puissance_PV_max_24V', 'puissance_PV_max_48V',
             'caracteristiques_additionnelles', 'description_technique', 'prix_unitaire_fcfa', 'quantite_stock',
-            'est_disponible'
+            'est_disponible', 'date_creation', 'date_modification'
         ]
-        read_only_fields = ['marchant_nom', 'mode_display']
+        read_only_fields = ['date_creation', 'date_modification', 'marchant_nom', 'mode_display']
 
     def create(self, validated_data):
         request = self.context.get('request')

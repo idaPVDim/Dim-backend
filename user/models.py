@@ -2,6 +2,10 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.utils.translation import gettext_lazy as _
 
+# ==========================
+# Gestion des utilisateurs
+# ==========================
+
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
@@ -20,7 +24,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('is_active', True)  # facultatif mais conseillé
+        extra_fields.setdefault('is_active', True)
 
         if extra_fields.get('is_staff') is not True:
             raise ValueError(_('Le superuser doit avoir is_staff=True.'))
@@ -31,23 +35,26 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
-    username = None  # Supprime le champ username
+    username = None
     email = models.EmailField(_('email address'), unique=True)
 
     ROLE_CHOICES = (
         ('client', 'Client'),
         ('technicien', 'Technicien'),
+        ('marchant', 'Marchant'),
         ('admin', 'Administrateur'),
     )
     first_name = models.CharField(_('prénom'), max_length=150, blank=True)
     last_name = models.CharField(_('nom'), max_length=150, blank=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='client')
     phone_number = models.CharField(max_length=20, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    date_joined = models.DateTimeField(auto_now_add=True)
 
-    USERNAME_FIELD = 'email'      # Définit le champ email comme identifiant principal
-    REQUIRED_FIELDS = []          # Plus besoin de username ou autre champ obligatoire
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
 
-    objects = UserManager()       # Manager personnalisé adapté
+    objects = UserManager()
 
     def __str__(self):
         return self.email
@@ -57,27 +64,114 @@ class User(AbstractUser):
         verbose_name_plural = _('utilisateurs')
         ordering = ['email']
 
+class Entreprise(models.Model):
+    nom = models.CharField(max_length=255)
+    logo = models.ImageField(upload_to="logos/", blank=True, null=True)
+    adresse = models.TextField(blank=True, null=True)
+    telephone = models.CharField(max_length=50, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+
+    def __str__(self):
+        return self.nom
+
+# ==========================
+# Profil Client
+# ==========================
 
 class ProfilClient(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profil_client')
     address = models.CharField(max_length=255, blank=True, null=True)
-    consommation_annuelle_moyenne_kwh = models.DecimalField(
-        max_digits=10, decimal_places=2, blank=True, null=True)
+    consommation_annuelle_moyenne_kwh = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
+    # Fidélité et recommandations
+    points_fidelite = models.PositiveIntegerField(default=0)
+    nombre_recommandations = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return f"Profil Client: {self.user.email}"
 
+
+# ==========================
+# Profil Technicien
+# ==========================
 
 class ProfilTechnicien(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profil_technicien')
     certifications = models.TextField(blank=True, null=True)
     zone_couverture = models.CharField(max_length=255, blank=True, null=True)
     is_certified = models.BooleanField(default=False)
+    entreprise = models.ForeignKey(
+        Entreprise,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        default=None,
+    )
+
+
+    # Documents
     id_document = models.FileField(upload_to='technician_docs/ids/', blank=True, null=True)
     formation_document = models.FileField(upload_to='technician_docs/formations/', blank=True, null=True)
     certification_docs = models.FileField(upload_to='technician_docs/certs/', blank=True, null=True)
     autorisation_docs = models.FileField(upload_to='technician_docs/autorisations/', blank=True, null=True)
     autres_docs = models.FileField(upload_to='technician_docs/autres/', blank=True, null=True)
 
+    # Statistiques et notes
+    note_moyenne = models.DecimalField(max_digits=3, decimal_places=2, default=0)
+    nombre_avis = models.PositiveIntegerField(default=0)
+    installations_realisees = models.PositiveIntegerField(default=0)
+
     def __str__(self):
         return f"Profil Technicien: {self.user.email}"
+
+
+# ==========================
+# Profil Marchant
+# ==========================
+
+class ProfilMarchand(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profil_marchand')
+    nom_boutique = models.CharField(max_length=255)
+    adresse_boutique = models.CharField(max_length=255, blank=True, null=True)
+    description_boutique = models.TextField(blank=True, null=True)
+    contact = models.CharField(max_length=20, blank=True, null=True)
+
+    # Statistiques et promotions
+    nombre_produits = models.PositiveIntegerField(default=0)
+    ventes_totales = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    points_fidelite_clients = models.PositiveIntegerField(default=0)  # fidélité liée aux clients acheteurs
+
+    def __str__(self):
+        return f"Profil Marchant: {self.nom_boutique} ({self.user.email})"
+
+
+# ==========================
+# Recommandations clients
+# ==========================
+
+class Recommandation(models.Model):
+    client_origine = models.ForeignKey(ProfilClient, on_delete=models.CASCADE, related_name='recommandations_envoyees')
+    client_recommande = models.ForeignKey(ProfilClient, on_delete=models.CASCADE, related_name='recommandations_recues')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    points_attribues = models.PositiveIntegerField(default=0)
+    est_valide = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.client_origine.user.email} recommande {self.client_recommande.user.email}"
+
+
+# ==========================
+# Garanties
+# ==========================
+
+class Garantie(models.Model):
+    client = models.ForeignKey(ProfilClient, on_delete=models.CASCADE, related_name='garanties')
+    technicien = models.ForeignKey(ProfilTechnicien, on_delete=models.SET_NULL, null=True, blank=True, related_name='garanties')
+    installation_id = models.PositiveIntegerField()  # liaison avec Installation
+    description = models.TextField(blank=True, null=True)
+    date_debut = models.DateTimeField()
+    date_fin = models.DateTimeField()
+    est_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Garantie Installation {self.installation_id} - Client {self.client.user.email}"

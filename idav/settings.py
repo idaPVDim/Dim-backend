@@ -32,7 +32,7 @@ ALLOWED_HOSTS = []
 
 INSTALLED_APPS = [
 
-     "unfold",  # before django.contrib.admin
+    "unfold",  # before django.contrib.admin
     "unfold.contrib.filters",  # optional, if special filters are needed
     "unfold.contrib.forms",  # optional, if special form elements are needed
     "unfold.contrib.inlines",  # optional, if special inlines are needed
@@ -98,8 +98,12 @@ WSGI_APPLICATION = 'idav.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'idav_db',
+        'USER': 'ye',
+        'PASSWORD': 'codewithme',
+        'HOST': 'db',
+        'PORT': '5432',
     }
 }
 
