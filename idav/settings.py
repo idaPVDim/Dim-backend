@@ -55,6 +55,9 @@ INSTALLED_APPS = [
         'installation_pv',
         'maintenance',
         'product',
+       # 'chat',
+        #'messageries',
+     #   'litige',
 
       "corsheaders",
          'drf_yasg',
