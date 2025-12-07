@@ -13,12 +13,9 @@ from .views import (
     ProfilMarchandViewSet,
     EntrepriseViewSet,
 )
-from .views_chat import ConversationViewSet, MessageViewSet
 
 router = DefaultRouter()
-router.register(r"conversations", ConversationViewSet, basename="conversation")
-router.register(r"messages", MessageViewSet, basename="message")
-# Admin CRUD
+
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'profil-clients', ProfilClientViewSet, basename='profil-client')
 router.register(r'profil-techniciens', ProfilTechnicienViewSet, basename='profil-technicien')

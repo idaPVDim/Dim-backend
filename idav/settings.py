@@ -49,19 +49,20 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles', 
     'user',
     'django_extensions',
-       'rest_framework.authtoken',
-        'rest_framework',
-        'installation',
-        'installation_pv',
-        'maintenance',
-        'product',
-       # 'chat',
-        #'messageries',
-     #   'litige',
+    'rest_framework.authtoken',
+    'rest_framework',
+    'installation',
+    'installation_pv',
+    'maintenance',
+    'product',
+    'chat',
+    'channels',
+    #'messageries',
+    # 'litige',
 
-      "corsheaders",
-         'drf_yasg',
-    
+    "corsheaders",
+    'drf_yasg',
+
 ]
 
 MIDDLEWARE = [
@@ -95,22 +96,36 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'idav.wsgi.application'
 
-
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'idav_db',
-        'USER': 'ye',
-        'PASSWORD': 'codewithme',
-        'HOST': 'db',
-        'PORT': '5432',
-    }
+# Redis backend for WebSockets
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("redis", 6379)],  # "redis" = service name docker-compose
+        },
+    },
 }
-
-
+'''DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'idav_db',
+            'USER': 'ye',
+            'PASSWORD': 'codewithme',
+            'HOST': 'db',
+            'PORT': '5432',
+        }
+    }
+'''
+CHANNEL_LAYERS
 GRAPH_MODELS ={
     'all_applications': True,
     'graph_models': True,
