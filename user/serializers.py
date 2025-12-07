@@ -7,7 +7,8 @@ from .models import (
     ProfilClient,
     ProfilTechnicien,
     ProfilMarchand,
-    Entreprise
+    Entreprise,
+    Rating,
 )
 
 User = get_user_model()
@@ -24,7 +25,7 @@ class EntrepriseSerializer(serializers.ModelSerializer):
 
 
 # ────────────────────────────────────────────────
-#  PROFILS
+#  PROFILS (AVEC RATING)
 # ────────────────────────────────────────────────
 
 class ProfilClientSerializer(serializers.ModelSerializer):
@@ -39,15 +40,12 @@ class ProfilTechnicienSerializer(serializers.ModelSerializer):
         queryset=Entreprise.objects.all(),
         source="entreprise",
         write_only=True,
-        required=False
+        required=False,
     )
 
     class Meta:
         model = ProfilTechnicien
         exclude = ("user",)
-
-    def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
 
 
 class ProfilMarchandSerializer(serializers.ModelSerializer):
@@ -56,15 +54,12 @@ class ProfilMarchandSerializer(serializers.ModelSerializer):
         queryset=Entreprise.objects.all(),
         source="entreprise",
         write_only=True,
-        required=False
+        required=False,
     )
 
     class Meta:
         model = ProfilMarchand
         exclude = ("user",)
-
-    def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
 
 
 # ────────────────────────────────────────────────
@@ -92,7 +87,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
-        # Création automatique du profil selon le rôle
+        # auto-create profile based on role
         if user.role == "client":
             ProfilClient.objects.create(user=user)
 
@@ -116,7 +111,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 # ────────────────────────────────────────────────
-#  USER + PROFILS DÉTAILLÉS
+#  USER + PROFIL COMPLET
 # ────────────────────────────────────────────────
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -159,3 +154,66 @@ class TokenLoginSerializer(serializers.Serializer):
 
         attrs["user"] = user
         return attrs
+
+
+# ────────────────────────────────────────────────
+#  RATING (NOUVEAU)
+# ────────────────────────────────────────────────
+
+class RatingSerializer(serializers.ModelSerializer):
+    auteur = UserSerializer(read_only=True)
+
+    technicien_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProfilTechnicien.objects.all(), source="technicien",
+        write_only=True, required=False
+    )
+    marchand_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProfilMarchand.objects.all(), source="marchand",
+        write_only=True, required=False
+    )
+    client_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProfilClient.objects.all(), source="client",
+        write_only=True, required=False
+    )
+
+    class Meta:
+        model = Rating
+        fields = [
+            "id",
+            "note",
+            "commentaire",
+            "date_creation",
+            "auteur",
+            "technicien_id",
+            "marchand_id",
+            "client_id",
+        ]
+
+    def validate(self, data):
+
+        # empêcher de noter plusieurs cibles à la fois
+        targets = ["technicien", "marchand", "client"]
+        filled = [t for t in targets if data.get(t) is not None]
+
+        if len(filled) != 1:
+            raise serializers.ValidationError("Vous devez noter exactement UN profil à la fois.")
+
+        return data
+
+    def create(self, validated_data):
+        user = self.context["request"].user
+        validated_data["auteur"] = user
+
+        return super().create(validated_data)
+
+
+# ────────────────────────────────────────────────
+#  RATING LIST POUR PROFILS
+# ────────────────────────────────────────────────
+
+class RatingShortSerializer(serializers.ModelSerializer):
+    auteur = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Rating
+        fields = ("id", "note", "commentaire", "date_creation", "auteur")

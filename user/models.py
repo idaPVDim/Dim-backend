@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.utils.translation import gettext_lazy as _
+from django.conf import settings
+from django.db.models import Avg
 
 # ==========================
 # Gestion des utilisateurs
@@ -14,10 +16,9 @@ class UserManager(BaseUserManager):
             raise ValueError(_('L\'adresse e-mail doit être renseignée'))
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
-        if password:
-            user.set_password(password)
-        else:
+        if not password:
             raise ValueError(_('Le mot de passe doit être renseigné'))
+        user.set_password(password)
         user.save(using=self._db)
         return user
 
@@ -44,9 +45,11 @@ class User(AbstractUser):
         ('marchant', 'Marchant'),
         ('admin', 'Administrateur'),
     )
+
     first_name = models.CharField(_('prénom'), max_length=150, blank=True)
     last_name = models.CharField(_('nom'), max_length=150, blank=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='client')
+
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(auto_now_add=True)
@@ -59,10 +62,10 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
-    class Meta:
-        verbose_name = _('utilisateur')
-        verbose_name_plural = _('utilisateurs')
-        ordering = ['email']
+
+# ==========================
+# Entreprise
+# ==========================
 
 class Entreprise(models.Model):
     nom = models.CharField(max_length=255)
@@ -74,6 +77,7 @@ class Entreprise(models.Model):
     def __str__(self):
         return self.nom
 
+
 # ==========================
 # Profil Client
 # ==========================
@@ -83,9 +87,9 @@ class ProfilClient(models.Model):
     address = models.CharField(max_length=255, blank=True, null=True)
     consommation_annuelle_moyenne_kwh = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
-    # Fidélité et recommandations
-    points_fidelite = models.PositiveIntegerField(default=0)
-    nombre_recommandations = models.PositiveIntegerField(default=0)
+    # ratings
+    note_moyenne = models.DecimalField(max_digits=3, decimal_places=2, default=0)
+    nombre_avis = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return f"Profil Client: {self.user.email}"
@@ -103,11 +107,9 @@ class ProfilTechnicien(models.Model):
     entreprise = models.ForeignKey(
         Entreprise,
         on_delete=models.CASCADE,
-        null=True,
-        blank=True,
+        null=True, blank=True,
         default=None,
     )
-
 
     # Documents
     id_document = models.FileField(upload_to='technician_docs/ids/', blank=True, null=True)
@@ -116,17 +118,16 @@ class ProfilTechnicien(models.Model):
     autorisation_docs = models.FileField(upload_to='technician_docs/autorisations/', blank=True, null=True)
     autres_docs = models.FileField(upload_to='technician_docs/autres/', blank=True, null=True)
 
-    # Statistiques et notes
+    # rating
     note_moyenne = models.DecimalField(max_digits=3, decimal_places=2, default=0)
     nombre_avis = models.PositiveIntegerField(default=0)
-    installations_realisees = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return f"Profil Technicien: {self.user.email}"
 
 
 # ==========================
-# Profil Marchant
+# Profil Marchand
 # ==========================
 
 class ProfilMarchand(models.Model):
@@ -136,13 +137,59 @@ class ProfilMarchand(models.Model):
     description_boutique = models.TextField(blank=True, null=True)
     contact = models.CharField(max_length=20, blank=True, null=True)
 
-    # Statistiques et promotions
-    nombre_produits = models.PositiveIntegerField(default=0)
-    ventes_totales = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    points_fidelite_clients = models.PositiveIntegerField(default=0)  # fidélité liée aux clients acheteurs
+    # rating
+    note_moyenne = models.DecimalField(max_digits=3, decimal_places=2, default=0)
+    nombre_avis = models.PositiveIntegerField(default=0)
 
     def __str__(self):
-        return f"Profil Marchant: {self.nom_boutique} ({self.user.email})"
+        return f"Profil Marchand: {self.nom_boutique} ({self.user.email})"
+
+
+# ==========================
+# Ratings (PlayStore-style)
+# ==========================
+
+class Rating(models.Model):
+    RATING_CHOICES = [(i, str(i)) for i in range(1, 6)]  # notes de 1 à 5
+
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ratings_donnes"
+    )
+
+    # Cibles possibles
+    technicien = models.ForeignKey(
+        ProfilTechnicien,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name="ratings_recus"
+    )
+
+    marchand = models.ForeignKey(
+        ProfilMarchand,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name="ratings_recus"
+    )
+
+    client = models.ForeignKey(
+        ProfilClient,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name="ratings_recus"
+    )
+
+    note = models.PositiveSmallIntegerField(choices=RATING_CHOICES)
+    commentaire = models.TextField(blank=True, null=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f"Rating {self.note} par {self.auteur.email}"
+
 
 
 # ==========================

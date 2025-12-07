@@ -1,4 +1,4 @@
-from rest_framework import generics, permissions, viewsets, filters, status, serializers
+from rest_framework import generics, permissions, viewsets, filters, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -10,9 +10,9 @@ from .models import (
     ProfilClient,
     ProfilTechnicien,
     ProfilMarchand,
-    Entreprise
+    Entreprise,
+    Rating,
 )
-
 from .serializers import (
     RegisterSerializer,
     UserProfileSerializer,
@@ -22,15 +22,16 @@ from .serializers import (
     ProfilTechnicienSerializer,
     ProfilMarchandSerializer,
     EntrepriseSerializer,
+    RatingSerializer,
 )
+from .permissions import IsAdminOrSelf
 
 User = get_user_model()
 
 
-# -------------------------------------------------------
-# AUTH : REGISTER, LOGIN, LOGOUT
-# -------------------------------------------------------
-
+# -----------------------
+# Register / Login / Logout
+# -----------------------
 class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = RegisterSerializer
@@ -42,10 +43,8 @@ class LoginView(APIView):
     def post(self, request):
         serializer = TokenLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         user = serializer.validated_data['user']
         token, _ = Token.objects.get_or_create(user=user)
-
         return Response({
             "token": token.key,
             "user": UserSerializer(user).data
@@ -56,15 +55,16 @@ class LogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        request.user.auth_token.delete()
+        # delete token if exists
+        if hasattr(request.user, 'auth_token'):
+            request.user.auth_token.delete()
         logout(request)
         return Response({"detail": "Déconnexion réussie."})
 
 
-# -------------------------------------------------------
-# PROFIL DU USER CONNECTÉ /users/me/
-# -------------------------------------------------------
-
+# -----------------------
+# User profile (current user) - we'll use /users/me/ action in UserViewSet
+# -----------------------
 class ProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserProfileSerializer
@@ -72,77 +72,60 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from .permissions import IsAdminOrSelf
-from .serializers import UserProfileSerializer
 
-class MeAPIView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminOrSelf]
-
-    def get(self, request):
-        """Get the current user's profile"""
-        serializer = UserProfileSerializer(request.user)
-        return Response(serializer.data)
-
-    def patch(self, request):
-        """Update the current user's profile"""
-        serializer = UserProfileSerializer(
-            request.user,
-            data=request.data,
-            partial=True
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-from .serializers import EntrepriseSerializer
-
-class MyEntrepriseAPIView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminOrSelf]
-
-    def get(self, request):
-        if request.user.role not in ["technicien", "marchand"]:
-            return Response({"detail": "This role has no company"}, status=403)
-        serializer = EntrepriseSerializer(request.user.entreprise)
-        return Response(serializer.data)
-
-    def patch(self, request):
-        if request.user.role not in ["technicien", "marchand"]:
-            return Response({"detail": "This role has no company"}, status=403)
-        serializer = EntrepriseSerializer(request.user.entreprise, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-# -------------------------------------------------------
-# LISTE DES USERS (ADMIN)
-# -------------------------------------------------------
-
-class UserListView(generics.ListAPIView):
+# -----------------------
+# Ratings endpoints
+# -----------------------
+class RateUserAPIView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = UserSerializer
-    queryset = User.objects.all()
+    serializer_class = RatingSerializer
+
+    def perform_create(self, serializer):
+        rater = self.request.user
+        # optionally prevent rating self
+        rated = serializer.validated_data['rated']
+        if rated == rater:
+            raise serializers.ValidationError("Vous ne pouvez pas noter vous-même.")
+        # Save
+        serializer.save(rater=rater)
+        # Update rated user stats (simple recalculation)
+        ratings = Rating.objects.filter(rated=rated)
+        total = sum(r.score for r in ratings)
+        avg = round(total / ratings.count(), 2) if ratings.exists() else 0
+        # Update profil if technicien
+        try:
+            prof = rated.profil_technicien
+            prof.note_moyenne = avg
+            prof.nombre_avis = ratings.count()
+            prof.save()
+        except Exception:
+            # not a technicien or no profil -> ignore
+            pass
 
 
-# -------------------------------------------------------
-# PERMISSION : ADMIN ou SOI-MÊME
-# -------------------------------------------------------
+class RatingsGivenAPIView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = RatingSerializer
 
-class IsAdminOrSelf(permissions.BasePermission):
-    def has_object_permission(self, request, view, obj):
-        return request.user.is_staff or obj == request.user
+    def get_queryset(self):
+        return Rating.objects.filter(rater=self.request.user)
 
 
-# -------------------------------------------------------
-# USER VIEWSET (CRUD admin + /users/me/)
-# -------------------------------------------------------
+class RatingsReceivedAPIView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = RatingSerializer
 
+    def get_queryset(self):
+        return Rating.objects.filter(rated=self.request.user)
+
+
+# -----------------------
+# User ViewSet for admin + /users/me/
+# -----------------------
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("email")
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["email"]
+    search_fields = ["email", "first_name", "last_name"]
     ordering_fields = ["email", "role"]
 
     def get_serializer_class(self):
@@ -171,25 +154,29 @@ class UserViewSet(viewsets.ModelViewSet):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
-
         return Response(serializer.data)
 
     @action(detail=True, methods=["put"], permission_classes=[permissions.IsAdminUser])
     def change_password(self, request, pk=None):
         user = get_object_or_404(User, pk=pk)
+        class ChangePasswordSerializer(serializers.Serializer):
+            password = serializers.CharField(write_only=True, validators=[password_validation.validate_password])
+            password2 = serializers.CharField(write_only=True)
+            def validate(self, attrs):
+                if attrs["password"] != attrs["password2"]:
+                    raise serializers.ValidationError("Les mots de passe ne correspondent pas.")
+                return attrs
+
         serializer = ChangePasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         user.set_password(serializer.validated_data["password"])
         user.save()
-
         return Response({"detail": "Mot de passe mis à jour."})
 
 
-# -------------------------------------------------------
-# PROFILS CLIENT / TECHNICIEN / MARCHAND (ADMIN)
-# -------------------------------------------------------
-
+# -----------------------
+# Profile viewsets (admin)
+# -----------------------
 class ProfilClientViewSet(viewsets.ModelViewSet):
     queryset = ProfilClient.objects.all()
     serializer_class = ProfilClientSerializer
@@ -207,6 +194,20 @@ class ProfilMarchandViewSet(viewsets.ModelViewSet):
     serializer_class = ProfilMarchandSerializer
     permission_classes = [permissions.IsAdminUser]
 
+
+class EntrepriseViewSet(viewsets.ModelViewSet):
+    queryset = Entreprise.objects.all()
+    serializer_class = EntrepriseSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+
+# -----------------------
+# Admin Rating viewset (optional)
+# -----------------------
+class RatingViewSet(viewsets.ModelViewSet):
+    queryset = Rating.objects.all()
+    serializer_class = RatingSerializer
+    permission_classes = [permissions.IsAdminUser]
 
 # -------------------------------------------------------
 # ENTREPRISE CRUD (ADMIN)
