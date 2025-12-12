@@ -50,6 +50,7 @@ urlpatterns = [
    path('maintenance/', include('maintenance.urls')),
    path('chat/', include('chat.urls')),
    path('pv/', include('installation_pv.urls')),
+   path('market/', include('market.urls')),
     
 ]
 if settings.DEBUG:

@@ -1,7 +1,7 @@
 from django.db import models
 from user.models import ProfilClient, ProfilTechnicien, Entreprise
 from product.models import Equipement
-
+from django.conf import settings
 
 # ==========================================================
 # PROVINCE
@@ -118,41 +118,93 @@ class SchemaInstallation(models.Model):
         return f"Schéma Installation {self.installation.id}"
 
 
-# ==========================================================
-# DEVIS → lié à Installation + Entreprise du technicien
-# ==========================================================
 class Devis(models.Model):
 
-    # chaque installation a un seul devis
-    installation = models.OneToOneField(
-        Installation,
+    TYPES = (
+        ("DEMANDE_TECHNICIEN_A_VENDEUR", "Demande du technicien au vendeur"),
+        ("REPONSE_VENDEUR_A_TECHNICIEN", "Réponse du vendeur au technicien"),
+        ("DEVIS_FINAL_AU_CLIENT", "Devis final envoyé au client"),
+    )
+
+    STATUTS = (
+        ("EN_ATTENTE", "En attente"),
+        ("ENVOYE", "Envoyé"),
+        ("ACCEPTE", "Accepté"),
+        ("REFUSE", "Refusé"),
+        ("TERMINE", "Terminé"),
+    )
+
+    type_devis = models.CharField(max_length=40, choices=TYPES)
+    statut = models.CharField(max_length=20, choices=STATUTS, default="EN_ATTENTE")
+
+    # Qui crée le devis ?
+    emetteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name="devis_emis"
+    )
+
+    # Qui reçoit ?
+    destinataire = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='devis'
+        related_name="devis_recus"
     )
 
-    # on récupère automatiquement l'entreprise via installation.technicien.entreprise
-    entreprise = models.ForeignKey(
-        Entreprise,
-        on_delete=models.PROTECT,
-        related_name='devis',
-        default=None,
-    )
+    titre_projet = models.CharField(max_length=200)
 
-    numero_devis = models.CharField(max_length=50, unique=True ,default='DEVIS-XXXX')
-
-    cout_achat_equipements = models.DecimalField(max_digits=12, decimal_places=2)
-    cout_installation_main_oeuvre = models.DecimalField(max_digits=12, decimal_places=2)
-    cout_maintenance_estime_an = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-
-    montant_total = models.DecimalField(max_digits=12, decimal_places=2)
-
-    fichier_devis_pdf = models.FileField(upload_to='devis_pdfs/', null=True, blank=True)
+    # Informations client (pour le devis final)
+    nom_client = models.CharField(max_length=200, blank=True, null=True)
+    telephone_client = models.CharField(max_length=30, blank=True, null=True)
+    localisation_client = models.CharField(max_length=255, blank=True, null=True)
 
     date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    def est_devis_final(self):
+        return self.type_devis == "DEVIS_FINAL_AU_CLIENT"
 
     def __str__(self):
-        return f"Devis {self.numero_devis} – Installation {self.installation.id}"
+        return f"Devis #{self.id} - {self.titre_projet}"
 
+class LigneDevis(models.Model):
+    devis = models.ForeignKey(Devis, on_delete=models.CASCADE, related_name="lignes")
+    equipement = models.ForeignKey(Equipement, on_delete=models.SET_NULL, null=True)
+
+    quantite = models.PositiveIntegerField(default=1)
+
+    # Prix renseigné uniquement par le vendeur
+    prix_unitaire = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    prix_total = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    disponibilite = models.CharField(max_length=100, blank=True, null=True)  # ex : Disponible / Rupture
+    garantie_mois = models.PositiveIntegerField(null=True, blank=True)
+
+    commentaires = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.equipement} x {self.quantite}"
+
+class ServiceDevisFinal(models.Model):
+    devis = models.ForeignKey(Devis, on_delete=models.CASCADE, related_name="services")
+    
+    nom = models.CharField(max_length=200)
+    description = models.TextField(blank=True, null=True)
+    prix = models.DecimalField(max_digits=12, decimal_places=2)
+
+    def __str__(self):
+        return self.nom
+
+
+class ConditionsDevis(models.Model):
+    devis = models.OneToOneField(Devis, on_delete=models.CASCADE, related_name="conditions")
+
+    validite_jours = models.PositiveIntegerField(default=7)
+    garantie_installation_mois = models.PositiveIntegerField(default=3)
+    modalites_paiement = models.TextField(default="50% avant installation, 50% après mise en service")
+
+    def __str__(self):
+        return f"Conditions du devis #{self.devis.id}"
 
 # ==========================================================
 # COMPARAISON ÉCONOMIQUE

@@ -99,7 +99,22 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         return user
 
+# -------------------------------------------------------
+# CHANGEMENT DE MOT DE PASSE
+# -------------------------------------------------------
+from django.contrib.auth import get_user_model, logout, password_validation
+from django.shortcuts import get_object_or_404
 
+from rest_framework import serializers
+
+class ChangePasswordSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, validators=[password_validation.validate_password])
+    password2 = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs["password2"]:
+            raise serializers.ValidationError("Les mots de passe ne correspondent pas.")
+        return attr
 # ────────────────────────────────────────────────
 #  USER SIMPLE
 # ────────────────────────────────────────────────

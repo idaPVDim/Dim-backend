@@ -219,15 +219,3 @@ class EntrepriseViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAdminUser]
 
 
-# -------------------------------------------------------
-# CHANGEMENT DE MOT DE PASSE
-# -------------------------------------------------------
-
-class ChangePasswordSerializer(serializers.Serializer):
-    password = serializers.CharField(write_only=True, validators=[password_validation.validate_password])
-    password2 = serializers.CharField(write_only=True)
-
-    def validate(self, attrs):
-        if attrs["password"] != attrs["password2"]:
-            raise serializers.ValidationError("Les mots de passe ne correspondent pas.")
-        return attrs

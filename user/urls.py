@@ -6,8 +6,8 @@ from .views import (
     LoginView,
     LogoutView,
     ProfileView,
-    MeAPIView,
-    MyEntrepriseAPIView,
+    #MeAPIView,
+   # MyEntrepriseAPIView,
     UserViewSet,
     ProfilClientViewSet,
     ProfilTechnicienViewSet,
@@ -40,9 +40,9 @@ urlpatterns = [
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
 
     # USER PROFILE (self)
-    path('users/me/', MeAPIView.as_view(), name='users-me'),
+    #path('users/me/', MeAPIView.as_view(), name='users-me'),
     path('users/me/profile/', ProfileView.as_view(), name='users-me-profile'),
-    path('users/me/entreprise/', MyEntrepriseAPIView.as_view(), name='users-me-entreprise'),
+  #  path('users/me/entreprise/', MyEntrepriseAPIView.as_view(), name='users-me-entreprise'),
 
     # ROUTER (CRUD ADMIN + USERS)
     path('', include(router.urls)),

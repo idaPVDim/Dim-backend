@@ -1,9 +1,12 @@
 from rest_framework.routers import DefaultRouter
-from .views import ConversationViewSet, MessageViewSet, MessageNotificationViewSet
+from django.urls import path, include
+
+from .views import ConversationViewSet, MessageViewSet
 
 router = DefaultRouter()
-router.register(r'conversations', ConversationViewSet, basename='conversation')
-router.register(r'messages', MessageViewSet, basename='message')
-router.register(r'notifications', MessageNotificationViewSet, basename='chat-notification')
+router.register("conversations", ConversationViewSet, basename="conversation")
+router.register("messages", MessageViewSet, basename="message")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path("", include(router.urls)),
+]
