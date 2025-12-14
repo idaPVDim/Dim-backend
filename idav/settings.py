@@ -100,19 +100,17 @@ WSGI_APPLICATION = 'idav.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': str(BASE_DIR / 'db.sqlite3'),
     }
 }
+
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 # Redis backend for WebSockets
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("redis", 6379)],  # "redis" = service name docker-compose
-        },
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
     },
 }
 '''DATABASES = {

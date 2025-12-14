@@ -10,6 +10,11 @@ import uuid
 def generate_request_ref():
     return f"REQ-{uuid.uuid4().hex[:8].upper()}"
 
+import uuid
+
+def generer_reference_vq():
+    return f"VQ-{uuid.uuid4().hex[:8].upper()}"
+
 class TechnicalRequest(models.Model):
     """
     Demande technique (liste d'items) créée par un technicien (ou dérivée d'une installation).
@@ -50,7 +55,7 @@ class VendorQuote(models.Model):
     """
     Réponse du marchand à une TechnicalRequest (ou TargetedRequest)
     """
-    reference = models.CharField(max_length=64, unique=True, default=lambda: f"VQ-{uuid.uuid4().hex[:8].upper()}")
+    reference = models.CharField(max_length=64, unique=True, default=generer_reference_vq)
     technical_request = models.ForeignKey(TechnicalRequest, on_delete=models.CASCADE, related_name="vendor_quotes")
     marchant = models.ForeignKey(ProfilMarchand, on_delete=models.CASCADE, related_name="vendor_quotes")
     entreprise = models.ForeignKey(Entreprise, on_delete=models.SET_NULL, null=True, blank=True, related_name="vendor_quotes")

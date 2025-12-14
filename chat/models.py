@@ -28,7 +28,7 @@ class Message(models.Model):
     ]
 
     conversation = models.ForeignKey(Conversation, related_name="messages", on_delete=models.CASCADE)
-    expediteur = models.ForeignKey(User, related_name="messages_emis", on_delete=models.CASCADE)
+    expediteur = models.ForeignKey(User, related_name="messages_emis", on_delete=models.CASCADE ,null=True, blank=True  )
 
     type = models.CharField(max_length=10, choices=MESSAGE_TYPES, default='text')
 

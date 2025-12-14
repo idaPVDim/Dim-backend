@@ -134,24 +134,26 @@ class Devis(models.Model):
         ("TERMINE", "Terminé"),
     )
 
-    type_devis = models.CharField(max_length=40, choices=TYPES)
+    type_devis = models.CharField(max_length=40, choices=TYPES , default="DEMANDE_TECHNICIEN_A_VENDEUR")
     statut = models.CharField(max_length=20, choices=STATUTS, default="EN_ATTENTE")
 
     # Qui crée le devis ?
     emetteur = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE, 
-        related_name="devis_emis"
+        related_name="devis_emis",
+        null=True, blank=True
     )
 
     # Qui reçoit ?
     destinataire = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="devis_recus"
+        related_name="devis_recus",
+        null=True, blank=True
     )
 
-    titre_projet = models.CharField(max_length=200)
+    titre_projet = models.CharField(max_length=200, default="Projet d'installation photovoltaïque")
 
     # Informations client (pour le devis final)
     nom_client = models.CharField(max_length=200, blank=True, null=True)
