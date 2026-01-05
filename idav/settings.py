@@ -3,12 +3,16 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+# SECRET KEY
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "replace-me-with-a-secret-key")
 
+# DEBUG
 DEBUG = False
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
+# ALLOWED HOSTS
+ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()]
 
+# APPS
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -31,6 +35,7 @@ INSTALLED_APPS = [
     "chat",
 ]
 
+# MIDDLEWARE
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -44,6 +49,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "idav.urls"
 
+# TEMPLATES
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -63,37 +69,43 @@ TEMPLATES = [
 WSGI_APPLICATION = "idav.wsgi.application"
 ASGI_APPLICATION = "idav.asgi.application"
 
+# DATABASE
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME"),
-        "USER": os.getenv("DB_USER"),
-        "PASSWORD": os.getenv("DB_PASSWORD"),
-        "HOST": os.getenv("DB_HOST"),
-        "PORT": 5432,
+        "NAME": os.getenv("DB_NAME", "dimfaso_prod"),
+        "USER": os.getenv("DB_USER", "dim_db_user"),
+        "PASSWORD": os.getenv("DB_PASSWORD", ""),
+        "HOST": os.getenv("DB_HOST", "db"),
+        "PORT": int(os.getenv("DB_PORT", 5432)),
     }
 }
 
+# CHANNEL LAYERS
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [(os.getenv("REDIS_HOST"), 6379)],
+            "hosts": [(os.getenv("REDIS_HOST", "redis"), int(os.getenv("REDIS_PORT", 6379)))],
         },
     }
 }
 
+# STATIC & MEDIA
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# AUTH
 AUTH_USER_MODEL = "user.User"
 
-CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+# CORS
+CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False").lower() in ("true", "1", "yes")
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 
+# REST FRAMEWORK
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.TokenAuthentication",
