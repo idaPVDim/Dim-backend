@@ -13,14 +13,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Chargement des variables d'environnement
 ENVIRONMENT = config('ENVIRONMENT', default='production')
-DEBUG = config('DEBUG', default=False, cast=bool)
+DEBUG = config('DEBUG', default=True, cast=bool)
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-development-key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 if ENVIRONMENT == 'production':
-    DEBUG = False
+    DEBUG = True
     ALLOWED_HOSTS = config(
         'DJANGO_ALLOWED_HOSTS', 
         default='api.dimfaso.com,157.173.117.83',
