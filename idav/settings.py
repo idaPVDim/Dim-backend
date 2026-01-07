@@ -13,30 +13,29 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Chargement des variables d'environnement
 ENVIRONMENT = config('ENVIRONMENT', default='production')
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config('DEBUG', default=False, cast=bool)  # False par défaut pour production
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-development-key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# Correction: Simplifier ALLOWED_HOSTS
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '157.173.117.83',
+    'api.dimfaso.com',
+    'dashboard.dimfaso.com',
+    'test-api.dimfaso.com',
+    'test-dashboard.dimfaso.com',
+]
+
+# Si ENVIRONMENT est production, ajouter des mesures de sécurité
 if ENVIRONMENT == 'production':
-    DEBUG = True
-    ALLOWED_HOSTS = config(
-        'DJANGO_ALLOWED_HOSTS', 
-        default='api.dimfaso.com,157.173.117.83',
-        cast=lambda v: [s.strip() for s in v.split(',')]
-    )
+    DEBUG = False
+    # Ne pas ajouter de nouveaux hosts, garder la liste ci-dessus
 else:
     DEBUG = True
-    ALLOWED_HOSTS = [
-        'localhost',
-        '127.0.0.1',
-        'test-api.dimfaso.com',
-        '157.173.117.83',
-        'api.dimfaso.com',
-        'dashboard.dimfaso.com',
-        'test-dashboard.dimfaso.com',
-    ]
 
 # Application definition
 INSTALLED_APPS = [
@@ -75,7 +74,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # Pour servir les statics en production
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.common.CommonMiddleware',
@@ -107,51 +106,28 @@ WSGI_APPLICATION = 'idav.wsgi.application'
 ASGI_APPLICATION = 'idav.asgi.application'
 
 # Database Configuration
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
-if ENVIRONMENT == 'production':
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('POSTGRES_DB', default='dimfaso_prod'),
-            'USER': config('POSTGRES_USER', default='dimfaso_user'),
-            'PASSWORD': config('POSTGRES_PASSWORD', default=''),
-            'HOST': config('DATABASE_HOST', default='db'),
-            'PORT': config('DATABASE_PORT', default=5432, cast=int),
-        }
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('POSTGRES_DB', default='dimfaso_prod'),
+        'USER': config('POSTGRES_USER', default='dimfaso_user'),
+        'PASSWORD': config('POSTGRES_PASSWORD', default=''),
+        'HOST': config('DATABASE_HOST', default='localhost'),
+        'PORT': config('DATABASE_PORT', default=5432, cast=int),
     }
-else:
-    # Pour staging/local
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('POSTGRES_DB', default='dimfaso_staging'),
-            'USER': config('POSTGRES_USER', default='dimfasro_staging_user'),
-            'PASSWORD': config('POSTGRES_PASSWORD', default=''),
-            'HOST': config('DATABASE_HOST', default='db'),
-            'PORT': config('DATABASE_PORT', default=5432, cast=int),
-        }
-    }
+}
 
-# Redis configuration for production
-if ENVIRONMENT == 'production':
-    REDIS_URL = config('REDIS_URL', default='redis://redis:6379/0')
-else:
-    REDIS_URL = config('REDIS_URL', default='redis://redis:6379/1')
+# Redis configuration
+REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
 
-# Channel layers configuration
+# Channel layers configuration - SIMPLIFIÉ POUR L'INSTANT
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [REDIS_URL],
-        },
+        "BACKEND": "channels.layers.InMemoryChannelLayer",  # Temporaire
     }
 }
 
 # Password validation
-# https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -168,30 +144,23 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Internationalization
-# https://docs.djangoproject.com/en/5.1/topics/i18n/
-
 LANGUAGE_CODE = 'fr-fr'
-
 TIME_ZONE = 'Africa/Ouagadougou'
-
 USE_I18N = True
-
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.1/howto/static-files/
-
+# Static files
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
-]
+] if os.path.exists(os.path.join(BASE_DIR, 'static')) else []
 
 # Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-# Whitenoise configuration for static files
+# Whitenoise configuration
 if ENVIRONMENT == 'production':
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
@@ -200,24 +169,26 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'user.User'
 
-X_FRAME_OPTIONS = 'ALLOWALL'
+X_FRAME_OPTIONS = 'SAMEORIGIN'  # Plus sécurisé que 'ALLOWALL'
 
-# CORS Configuration
-CORS_ALLOWED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:5173,http://localhost:3000,http://127.0.0.1:8000',
-    cast=lambda v: [s.strip() for s in v.split(',')]
-)
+# CORS Configuration - SIMPLIFIÉ POUR LE MOMENT
+CORS_ALLOW_ALL_ORIGINS = True  # Temporaire pour le développement
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:8000",
+    "http://157.173.117.83",
+    "https://dashboard.dimfaso.com",
+    "https://api.dimfaso.com",
+]
 
-# Pour le développement, on peut autoriser toutes les origines
-if ENVIRONMENT != 'production':
-    CORS_ALLOW_ALL_ORIGINS = True
-
-CSRF_TRUSTED_ORIGINS = config(
-    'CSRF_TRUSTED_ORIGINS',
-    default='http://localhost:8000,http://127.0.0.1:8000',
-    cast=lambda v: [s.strip() for s in v.split(',')]
-)
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://157.173.117.83",
+    "https://api.dimfaso.com",
+    "https://dashboard.dimfaso.com",
+]
 
 # REST Framework Configuration
 REST_FRAMEWORK = {
@@ -226,72 +197,41 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',  # Plus permissif
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
 }
 
-# Security settings for production
-if ENVIRONMENT == 'production':
-    # HTTPS settings
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    
-    # Security headers
-    SECURE_BROWSER_XSS_FILTER = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_HSTS_SECONDS = 31536000  # 1 year
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
+# Security settings - DÉSACTIVÉS TEMPORAIREMENT POUR LE DÉVELOPPEMENT
+# if ENVIRONMENT == 'production':
+#     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+#     SECURE_SSL_REDIRECT = True
+#     SESSION_COOKIE_SECURE = True
+#     CSRF_COOKIE_SECURE = True
+#     SECURE_BROWSER_XSS_FILTER = True
+#     SECURE_CONTENT_TYPE_NOSNIFF = True
+#     SECURE_HSTS_SECONDS = 31536000
+#     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+#     SECURE_HSTS_PRELOAD = True
 
-# Logging configuration
+# Logging configuration simplifiée
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
-        },
-    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'simple',
-        },
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs/django.log'),
-            'formatter': 'verbose',
         },
     },
     'root': {
-        'handlers': ['console', 'file'],
+        'handlers': ['console'],
         'level': 'INFO',
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console', 'file'],
-            'level': 'INFO',
-            'propagate': True,
-        },
     },
 }
 
-# Email configuration (à configurer plus tard)
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
-EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
-EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+# Email configuration
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # Console pour le développement
 
 # Django Unfold configuration
 UNFOLD = {
@@ -308,7 +248,13 @@ GRAPH_MODELS = {
     'group_models': True,
 }
 
-# Create logs directory if it doesn't exist
+# Créer les répertoires nécessaires
 os.makedirs(os.path.join(BASE_DIR, 'logs'), exist_ok=True)
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 os.makedirs(STATIC_ROOT, exist_ok=True)
+
+# Assurer que le répertoire static existe
+static_dir = os.path.join(BASE_DIR, 'static')
+if not os.path.exists(static_dir):
+    os.makedirs(static_dir)
+    open(os.path.join(static_dir, '.gitkeep'), 'w').close()  # Fichier vide pour Git

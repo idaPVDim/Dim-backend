@@ -1,29 +1,16 @@
 """
-ASGI config for idav project.
+WSGI config for idav project.
 
-It exposes the ASGI callable as a module-level variable named ``application``.
+It exposes the WSGI callable as a module-level variable named ``application``.
+
+For more information on this file, see
+https://docs.djangoproject.com/en/5.1/howto/deployment/wsgi/
 """
 
 import os
-import django
-from django.core.asgi import get_asgi_application
-from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
-from channels.security.websocket import AllowedHostsOriginValidator
+
+from django.core.wsgi import get_wsgi_application
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'idav.settings')
-django.setup()
 
-# Importez vos routers WebSocket après l'initialisation de Django
-from chat.routing import websocket_urlpatterns
-
-application = ProtocolTypeRouter({
-    "http": get_asgi_application(),
-    "websocket": AllowedHostsOriginValidator(
-        AuthMiddlewareStack(
-            URLRouter(
-                websocket_urlpatterns
-            )
-        )
-    ),
-})
+application = get_wsgi_application()
