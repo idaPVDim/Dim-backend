@@ -7,35 +7,25 @@ import os
 from pathlib import Path
 from decouple import config
 import dj_database_url
+import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Chargement des variables d'environnement
 ENVIRONMENT = config('ENVIRONMENT', default='production')
-DEBUG = config('DEBUG', default=False, cast=bool)  # False par défaut pour production
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-development-key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# Correction: Simplifier ALLOWED_HOSTS
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '157.173.117.83',
-    'api.dimfaso.com',
-    'dashboard.dimfaso.com',
-    'test-api.dimfaso.com',
-    'test-dashboard.dimfaso.com',
-]
+# ALLOWED_HOSTS basé sur les variables d'environnement
+ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
-# Si ENVIRONMENT est production, ajouter des mesures de sécurité
-if ENVIRONMENT == 'production':
-    DEBUG = False
-    # Ne pas ajouter de nouveaux hosts, garder la liste ci-dessus
-else:
-    DEBUG = True
+# Si DEBUG est True, ajouter quelques hosts pour le développement
+if DEBUG:
+    ALLOWED_HOSTS.extend(['localhost', '127.0.0.1', '0.0.0.0'])
 
 # Application definition
 INSTALLED_APPS = [
@@ -105,29 +95,57 @@ TEMPLATES = [
 WSGI_APPLICATION = 'idav.wsgi.application'
 ASGI_APPLICATION = 'idav.asgi.application'
 
-# Database Configuration
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('POSTGRES_DB', default='dimfaso_prod'),
-        'USER': config('POSTGRES_USER', default='dimfaso_user'),
-        'PASSWORD': config('POSTGRES_PASSWORD', default=''),
-        'HOST': config('DATABASE_HOST', default='localhost'),
-        'PORT': config('DATABASE_PORT', default=5432, cast=int),
+# ============================================
+# DATABASE CONFIGURATION - FIXED FOR DOCKER
+# ============================================
+
+# Utiliser DATABASE_URL si disponible, sinon configurer manuellement
+DATABASE_URL = config('DATABASE_URL', default='')
+if DATABASE_URL:
+    # Utiliser dj_database_url pour parser DATABASE_URL
+    DATABASES = {
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
     }
-}
+else:
+    # Configuration manuelle pour Docker
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DATABASE_NAME', default=config('POSTGRES_DB', default='dimfaso_prod')),
+            'USER': config('DATABASE_USER', default=config('POSTGRES_USER', default='dimfaso_user')),
+            'PASSWORD': config('DATABASE_PASSWORD', default=config('POSTGRES_PASSWORD', default='')),
+            'HOST': config('DATABASE_HOST', default='db'),  # 'db' est le nom du service dans docker-compose
+            'PORT': config('DATABASE_PORT', default=5432, cast=int),
+            'CONN_MAX_AGE': 600,  # Persistant connections
+            'OPTIONS': {
+                'connect_timeout': 30,
+            }
+        }
+    }
+
+# ============================================
+# REDIS & CHANNELS CONFIGURATION
+# ============================================
 
 # Redis configuration
-REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
+REDIS_URL = config('REDIS_URL', default='redis://redis:6379/0')
 
-# Channel layers configuration - SIMPLIFIÉ POUR L'INSTANT
+# Channel layers configuration
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",  # Temporaire
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [(REDIS_URL)],
+            "capacity": 1500,  # default 100
+            "expiry": 10,  # default 60
+        },
     }
 }
 
-# Password validation
+# ============================================
+# PASSWORD VALIDATION
+# ============================================
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -143,13 +161,19 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# Internationalization
+# ============================================
+# INTERNATIONALIZATION
+# ============================================
+
 LANGUAGE_CODE = 'fr-fr'
 TIME_ZONE = 'Africa/Ouagadougou'
 USE_I18N = True
 USE_TZ = True
 
-# Static files
+# ============================================
+# STATIC & MEDIA FILES
+# ============================================
+
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [
@@ -160,101 +184,242 @@ STATICFILES_DIRS = [
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-# Whitenoise configuration
-if ENVIRONMENT == 'production':
+# Whitenoise configuration for production
+if ENVIRONMENT == 'production' and not DEBUG:
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+else:
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
 
-# Default primary key field type
+# ============================================
+# DEFAULT PRIMARY KEY
+# ============================================
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
 AUTH_USER_MODEL = 'user.User'
+X_FRAME_OPTIONS = 'SAMEORIGIN'
 
-X_FRAME_OPTIONS = 'SAMEORIGIN'  # Plus sécurisé que 'ALLOWALL'
+# ============================================
+# CORS CONFIGURATION
+# ============================================
 
-# CORS Configuration - SIMPLIFIÉ POUR LE MOMENT
-CORS_ALLOW_ALL_ORIGINS = True  # Temporaire pour le développement
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:8000",
-    "http://157.173.117.83",
-    "https://dashboard.dimfaso.com",
-    "https://api.dimfaso.com",
+# CORS settings
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only True in debug mode
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='').split(',') if config('CORS_ALLOWED_ORIGINS', default='') else []
+
+if DEBUG:
+    CORS_ALLOWED_ORIGINS.extend([
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:3000",
+    ])
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://157.173.117.83",
-    "https://api.dimfaso.com",
-    "https://dashboard.dimfaso.com",
-]
+# CSRF settings
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='').split(',') if config('CSRF_TRUSTED_ORIGINS', default='') else []
 
-# REST Framework Configuration
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS.extend([
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ])
+
+# ============================================
+# REST FRAMEWORK CONFIGURATION
+# ============================================
+
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
+    'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
-    ),
-    'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticatedOrReadOnly',  # Plus permissif
-    ),
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+    ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer' if DEBUG else 'rest_framework.renderers.JSONRenderer',
+    ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/day',
+        'user': '1000/day'
+    }
 }
 
-# Security settings - DÉSACTIVÉS TEMPORAIREMENT POUR LE DÉVELOPPEMENT
-# if ENVIRONMENT == 'production':
-#     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-#     SECURE_SSL_REDIRECT = True
-#     SESSION_COOKIE_SECURE = True
-#     CSRF_COOKIE_SECURE = True
-#     SECURE_BROWSER_XSS_FILTER = True
-#     SECURE_CONTENT_TYPE_NOSNIFF = True
-#     SECURE_HSTS_SECONDS = 31536000
-#     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-#     SECURE_HSTS_PRELOAD = True
+# ============================================
+# SECURITY SETTINGS
+# ============================================
 
-# Logging configuration simplifiée
+# Security settings for production
+if ENVIRONMENT == 'production' and not DEBUG:
+    # HTTPS settings
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Additional security
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+else:
+    # Development settings
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    SECURE_SSL_REDIRECT = False
+
+# ============================================
+# LOGGING CONFIGURATION
+# ============================================
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
         },
     },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'stream': sys.stdout,
+        },
+        'file': {
+            'level': 'ERROR',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'django.log'),
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
     },
 }
 
-# Email configuration
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # Console pour le développement
+# ============================================
+# EMAIL CONFIGURATION
+# ============================================
 
-# Django Unfold configuration
+if ENVIRONMENT == 'production' and not DEBUG:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
+    EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+    EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+    EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+    EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+    DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@dimfaso.com')
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# ============================================
+# DJANGO UNFOLD CONFIGURATION
+# ============================================
+
 UNFOLD = {
     "SITE_TITLE": "DimFaso Administration",
     "SITE_HEADER": "DimFaso Admin",
     "SITE_URL": "/",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": True,
+    "COLORS": {
+        "primary": {
+            "50": "250 245 255",
+            "100": "243 232 255",
+            "200": "233 213 255",
+            "300": "216 180 254",
+            "400": "192 132 252",
+            "500": "168 85 247",
+            "600": "147 51 234",
+            "700": "126 34 206",
+            "800": "107 33 168",
+            "900": "88 28 135",
+        },
+    },
 }
 
-# Django Extensions configuration
+# ============================================
+# DJANGO EXTENSIONS
+# ============================================
+
 GRAPH_MODELS = {
     'all_applications': True,
     'group_models': True,
 }
 
-# Créer les répertoires nécessaires
+# ============================================
+# CREATE NECESSARY DIRECTORIES
+# ============================================
+
+# Create necessary directories
 os.makedirs(os.path.join(BASE_DIR, 'logs'), exist_ok=True)
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 os.makedirs(STATIC_ROOT, exist_ok=True)
 
-# Assurer que le répertoire static existe
+# Ensure static directory exists
 static_dir = os.path.join(BASE_DIR, 'static')
 if not os.path.exists(static_dir):
     os.makedirs(static_dir)
-    open(os.path.join(static_dir, '.gitkeep'), 'w').close()  # Fichier vide pour Git
+    open(os.path.join(static_dir, '.gitkeep'), 'w').close()
+
+# ============================================
+# HEALTH CHECK ENDPOINT
+# ============================================
+
+# Health check middleware (optional)
+HEALTH_CHECK = {
+    'DISK_USAGE_MAX': 90,  # percent
+    'MEMORY_MIN': 100,     # in MB
+}
+
+print(f"✅ Django settings loaded for environment: {ENVIRONMENT}")
+print(f"✅ Debug mode: {DEBUG}")
+print(f"✅ Database: {DATABASES['default']['HOST']}:{DATABASES['default']['PORT']}")
+print(f"✅ Allowed hosts: {ALLOWED_HOSTS}")
