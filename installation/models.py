@@ -154,7 +154,7 @@ class Devis(models.Model):
     )
 
     titre_projet = models.CharField(max_length=200, default="Projet d'installation photovoltaïque")
-
+    fichier_devis_pdf = models.FileField(upload_to='devis_pdfs/', null=True, blank=True)
     # Informations client (pour le devis final)
     nom_client = models.CharField(max_length=200, blank=True, null=True)
     telephone_client = models.CharField(max_length=30, blank=True, null=True)
