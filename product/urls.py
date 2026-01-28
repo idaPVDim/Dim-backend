@@ -6,7 +6,7 @@ from .views import (
     EquipementPublicViewSet,      # ✅ Vue publique
     EquipementMarchandViewSet,    # ✅ Vue pour marchands
     EquipementAdminViewSet,       # ✅ Vue pour admin (optionnel)
-    StockViewSet
+   # StockViewSet
 )
 
 router = DefaultRouter()
@@ -23,7 +23,7 @@ router.register(r'equipements/marchand', EquipementMarchandViewSet, basename='eq
 router.register(r'equipements/admin', EquipementAdminViewSet, basename='equipement-admin')
 
 # ✅ Stock management (maintenez votre vue existante)
-router.register(r"stock", StockViewSet, basename="stock")
+#router.register(r"stock", StockViewSet, basename="stock")
 
 urlpatterns = [
     path('api/', include(router.urls)),
